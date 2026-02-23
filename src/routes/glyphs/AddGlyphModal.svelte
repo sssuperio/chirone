@@ -3,6 +3,7 @@
 	import { glyphs, selectedGlyph } from '$lib/stores';
 	import type { GlyphInput } from '$lib/types';
 	import { Modal } from 'flowbite-svelte';
+	import { tick } from 'svelte';
 	import { nanoid } from 'nanoid';
 	import Button from '$lib/ui/button.svelte';
 
@@ -11,6 +12,7 @@
 	//
 
 	let char = '';
+	let charInput: HTMLInputElement | undefined;
 
 	$: foundGlyph = findCharInUnicodeList(char);
 	$: glyphAlreadyExists = doesGlyphAlreadyExist(foundGlyph);
@@ -38,12 +40,25 @@
 		char = '';
 		open = false;
 	}
+
+	async function focusCharInput() {
+		await tick();
+		charInput?.focus();
+		charInput?.select();
+	}
 </script>
 
-<Modal outsideclose class="!rounded-none-none !font-mono" bind:open title="Aggiungi glifo">
+<Modal
+	outsideclose
+	class="!rounded-none-none !font-mono"
+	bind:open
+	title="Aggiungi glifo"
+	on:open={focusCharInput}
+>
 	<div class="flex items-stretch gap-4 font-mono">
 		<input
 			class="border hover:border-blue-600 px-4"
+			bind:this={charInput}
 			bind:value={char}
 			maxlength="1"
 			minlength="1"

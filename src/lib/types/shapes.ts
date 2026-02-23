@@ -9,6 +9,7 @@ export enum ShapeKind {
 	Rectangle = 'rectangle',
 	Ellipse = 'ellipse',
 	Quarter = 'quarter',
+	Triangle = 'triangle',
 	SVG = 'svg'
 }
 
@@ -41,6 +42,14 @@ export type QuarterProps = BaseProps &
 
 export type QuarterShape = ShapeTemplate<ShapeKind.Quarter, QuarterProps>;
 
+// Triangle
+
+export type TriangleProps = BaseProps & {
+	orientation: OrientationProp;
+};
+
+export type TriangleShape = ShapeTemplate<ShapeKind.Triangle, TriangleProps>;
+
 // SVG
 
 export type SVGProps = BaseProps & {
@@ -53,5 +62,5 @@ export type SVGShape = ShapeTemplate<ShapeKind.SVG, SVGProps>;
  * Utility union types
  */
 
-export type Props = VoidProps | RectangleProps | EllipseProps | QuarterProps | SVGProps;
-export type Shape = VoidShape | RectangleShape | EllipseShape | QuarterShape | SVGShape;
+export type Props = VoidProps | RectangleProps | EllipseProps | QuarterProps | TriangleProps | SVGProps;
+export type Shape = VoidShape | RectangleShape | EllipseShape | QuarterShape | TriangleShape | SVGShape;

@@ -2,7 +2,14 @@ import type { BooleanProp, NumberProp, OrientationProp, StringProp } from './pro
 import { PropKind } from './props';
 import { ValueKind } from './values';
 import { Orientation } from './values';
-import type { RectangleProps, EllipseProps, QuarterProps, VoidProps, SVGProps } from './shapes';
+import type {
+	RectangleProps,
+	EllipseProps,
+	QuarterProps,
+	TriangleProps,
+	VoidProps,
+	SVGProps
+} from './shapes';
 import { ShapeKind } from './shapes';
 import type { Rule, Syntax } from './syntax';
 
@@ -64,6 +71,13 @@ export const quarterProps: QuarterProps = {
 	squaring: numberPropFixed(0.56),
 	orientation: orientationPropFixed(Orientation.NE),
 	negative: booleanPropFixed(false)
+};
+
+export const triangleProps: TriangleProps = {
+	scale_x: numberPropFixed(1),
+	scale_y: numberPropFixed(1),
+	rotation: numberPropFixed(0),
+	orientation: orientationPropFixed(Orientation.NE)
 };
 
 export const svgProps: SVGProps = {

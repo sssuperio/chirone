@@ -7,6 +7,7 @@
 		rectangleProps,
 		ellipseProps,
 		quarterProps,
+		triangleProps,
 		svgProps
 	} from '$lib/types';
 
@@ -35,6 +36,7 @@
 			rectangle: rectangleProps,
 			ellipse: ellipseProps,
 			quarter: quarterProps,
+			triangle: triangleProps,
 			svg: svgProps
 		};
 		rule.shape.props = data[tempShape];
@@ -47,6 +49,7 @@
 		{ label: 'rectangle', value: ShapeKind.Rectangle },
 		{ label: 'ellipse', value: ShapeKind.Ellipse },
 		{ label: 'quarter', value: ShapeKind.Quarter },
+		{ label: 'triangle', value: ShapeKind.Triangle },
 		{ label: 'void', value: ShapeKind.Void },
 		{ label: 'svg', value: ShapeKind.SVG }
 	];
@@ -118,7 +121,7 @@
 					</div>
 				{/if}
 				<!--  -->
-				{#if rule.shape.kind == ShapeKind.Quarter}
+				{#if rule.shape.kind == ShapeKind.Quarter || rule.shape.kind == ShapeKind.Triangle}
 					<div class="block">
 						<Label target="orientamento">Orientamento</Label>
 						<InputPropOrientation bind:prop={rule.shape.props.orientation} />

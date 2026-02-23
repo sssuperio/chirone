@@ -10,9 +10,11 @@ import {
 	rectangle,
 	ellipse,
 	quarter,
+	triangle,
 	svg,
 	type EllipseProps,
 	type QuarterProps,
+	type TriangleProps,
 	type SVGProps
 } from './shapes';
 
@@ -92,6 +94,13 @@ export async function drawPath(box: paper.Rectangle, rule: Rule): Promise<Array<
 			orientation: calcOrientationProp(rule.shape.props.orientation)
 		};
 		paths.push(...(await quarter(box, props)));
+	}
+	//
+	else if (rule.shape.kind == ShapeKind.Triangle) {
+		const props: TriangleProps = {
+			orientation: calcOrientationProp(rule.shape.props.orientation)
+		};
+		paths.push(...(await triangle(box, props)));
 	}
 	//
 	else if (rule.shape.kind == ShapeKind.Void) {

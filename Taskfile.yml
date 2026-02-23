@@ -1,0 +1,67 @@
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  install:
+    desc: Install dependencies
+    cmds:
+      - pnpm install
+
+  dev:
+    desc: Start the development server
+    deps: [install]
+    cmds:
+      - pnpm run dev -- --open
+
+  build:
+    desc: Build the app for production
+    cmds:
+      - pnpm run build
+
+  preview:
+    desc: Preview the production build
+    deps: [build]
+    cmds:
+      - pnpm run preview
+
+  check:
+    desc: Run type and Svelte checks
+    cmds:
+      - pnpm run check
+
+  lint:
+    desc: Run formatting and lint checks
+    cmds:
+      - pnpm run lint
+
+  format:
+    desc: Format the codebase
+    cmds:
+      - pnpm run format
+
+  test:
+    desc: Run unit and integration tests
+    cmds:
+      - pnpm run test
+
+  test:unit:
+    desc: Run unit tests
+    cmds:
+      - pnpm run test:unit
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - pnpm run test:integration
+
+  ci:
+    desc: Run the CI-equivalent local checks
+    cmds:
+      - task: check
+      - task: lint
+      - task: test

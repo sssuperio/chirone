@@ -111,6 +111,34 @@ export const quarter: Shape<QuarterProps> = async (box, props) => {
 
 //
 
+export type TriangleProps = Partial<OrientationProp>;
+
+export const triangle: Shape<TriangleProps> = async (box, props) => {
+	const { orientation = Orientation.NE } = props;
+
+	const a = box.topLeft;
+	const b = box.bottomRight;
+	const c = box.bottomLeft;
+
+	const path = new paper.Path();
+	path.moveTo(a);
+	path.lineTo(b);
+	path.lineTo(c);
+	path.closePath();
+
+	// Transforming according to orientation
+	if (orientation == 'NE' || orientation == 'NW') {
+		path.scale(1, -1, box.center);
+	}
+	if (orientation == 'NW' || orientation == 'SW') {
+		path.scale(-1, 1, box.center);
+	}
+
+	return [path];
+};
+
+//
+
 export type EllipseProps = Partial<SquaringProp & NegativeProp>;
 
 export const ellipse: Shape<EllipseProps> = async (box, props) => {
@@ -145,9 +173,60 @@ export type SVGProps = {
 	negative: boolean;
 };
 
+function isLikelySvgMarkup(source: string): boolean {
+	return source.trimStart().startsWith('<svg');
+}
+
+function isLikelySvgDataUrl(source: string): boolean {
+	return source.startsWith('data:image/svg+xml');
+}
+
+function isRemoteOrAbsoluteUrl(source: string): boolean {
+	return (
+		source.startsWith('/') ||
+		source.startsWith('./') ||
+		source.startsWith('../') ||
+		source.startsWith('http://') ||
+		source.startsWith('https://')
+	);
+}
+
+async function resolveSvgSource(rawUrl: string): Promise<string | undefined> {
+	const source = rawUrl?.trim?.() ?? '';
+	if (!source) return undefined;
+
+	if (isLikelySvgMarkup(source) || isLikelySvgDataUrl(source)) {
+		return source;
+	}
+
+	if (!isRemoteOrAbsoluteUrl(source)) {
+		return undefined;
+	}
+
+	try {
+		const response = await fetch(source);
+		if (!response.ok) return undefined;
+		const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+		const text = await response.text();
+		const looksLikeSvg = contentType.includes('image/svg+xml') || isLikelySvgMarkup(text);
+		if (!looksLikeSvg) return undefined;
+		return text;
+	} catch {
+		return undefined;
+	}
+}
+
 export const svg: Shape<SVGProps> = async (box, props) => {
+	const source = await resolveSvgSource(props.url);
+	if (!source) {
+		console.warn('[GTL svg] Ignored non-SVG source in rule', {
+			urlPreview: props.url?.slice(0, 80) ?? ''
+		});
+		return [];
+	}
+
 	const path = await new Promise<paper.Item>((resolve) => {
-		paper.project.importSVG(props.url, {
+		paper.project.importSVG(source, {
 			expandShapes: true, // <- Guarantee that children are paths
 			onLoad: (item: paper.Item) => {
 				resolve(item);
@@ -158,7 +237,6 @@ export const svg: Shape<SVGProps> = async (box, props) => {
 	path.scale(1, -1, box.center);
 
 	const pathItems = SVGItemToPathItems(path);
-	console.log(props);
 
 	if (!props.negative) return pathItems;
 	else {
