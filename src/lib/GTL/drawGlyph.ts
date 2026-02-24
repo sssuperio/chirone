@@ -151,6 +151,6 @@ export function createBox(cell: Cell, baseSize: number, widthRatio: number): pap
 
 export function getGlyphWidth(structure: string, boxWidth: number): number {
 	const rows = splitStructure(structure);
-	const length = rows[0].length;
+	const length = rows[0]?.length ?? 0;
 	return boxWidth * length;
 }

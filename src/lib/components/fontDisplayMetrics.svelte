@@ -4,10 +4,11 @@
 	import { metrics } from '$lib/stores';
 	import { cellsToUnits, normalizeFontMetrics } from '$lib/GTL/metrics';
 
-	export let font: opentype.Font;
-	export let text: string;
-	export let canvasWidth = 520;
-	export let canvasHeight = 260;
+export let font: opentype.Font;
+export let text: string;
+export let glyphName: string | undefined = undefined;
+export let canvasWidth = 520;
+export let canvasHeight = 260;
 	export let showLegend = true;
 	export let responsive = true;
 	export let debug = false;
@@ -132,6 +133,18 @@
 		};
 	}
 
+	function findGlyphByName(font: opentype.Font, name: string): opentype.Glyph | undefined {
+		const total = Number((font as any).glyphs?.length ?? 0);
+		if (!Number.isFinite(total) || total <= 0) return undefined;
+
+		for (let i = 0; i < total; i++) {
+			const glyph = font.glyphs.get(i);
+			if (glyph?.name === name) return glyph;
+		}
+
+		return undefined;
+	}
+
 	function render() {
 		if (!canvas || !font) return;
 
@@ -147,7 +160,7 @@
 			const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
 			if (!ctx) return;
 			const char = text?.[0] || ' ';
-			const glyph = font.charToGlyph(char);
+			const glyph = glyphName ? findGlyphByName(font, glyphName) ?? font.charToGlyph(char) : font.charToGlyph(char);
 			const m = buildPreviewMetrics(glyph);
 			previewMetrics = m;
 

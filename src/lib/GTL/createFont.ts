@@ -20,6 +20,7 @@ import {
 	getStylisticSetFeature,
 	resolveUnicodeNumber
 } from './glyphName';
+import { parseGlyphStructure, resolveGlyphStructures } from './structure';
 
 //
 
@@ -40,9 +41,11 @@ export async function generateGlyph(
 
 	// Listing all the paths
 	const paths: Array<paper.PathItem> = [];
+	const parsedStructure = parseGlyphStructure(glyph.structure);
+	const renderStructure = parsedStructure.body;
 
 	// Converting structure to array
-	const cells: Array<Cell> = structureToArray(glyph.structure);
+	const cells: Array<Cell> = structureToArray(renderStructure);
 
 	// Iterating over cells (saving all the paths)
 	for (const c of cells) {
@@ -98,7 +101,7 @@ export async function generateGlyph(
 
 	// Adding glyph metadata
 	const name = glyph.name;
-	const advanceWidth = getGlyphWidth(glyph.structure, baseSize * widthRatio);
+	const advanceWidth = getGlyphWidth(renderStructure, baseSize * widthRatio);
 	const unicode = resolveUnicodeNumber(name);
 
 	// Clearing paperjs
@@ -148,8 +151,36 @@ export async function generateFont(
 	});
 	opentypeGlyphs.push(notdefGlyph);
 
+	const transparentSymbols = new Set<string>([' ']);
+	for (const rule of syntax.rules) {
+		if (rule.shape.kind === ShapeKind.Void && rule.symbol) {
+			transparentSymbols.add(rule.symbol);
+		}
+	}
+
+	const resolvedGlyphStructures = resolveGlyphStructures(glyphs, { transparentSymbols });
+	const resolvedGlyphVisualStructures = resolveGlyphStructures(glyphs, {
+		transparentSymbols,
+		applySymbolOverride: false
+	});
+
 	for (const g of glyphs) {
-		opentypeGlyphs.push(await generateGlyph(g, syntax, baseSquare, 1, normalizedMetrics.descender));
+		const resolvedStructure =
+			resolvedGlyphVisualStructures.get(g.name) ??
+			resolvedGlyphStructures.get(g.name) ??
+			parseGlyphStructure(g.structure).body;
+		opentypeGlyphs.push(
+			await generateGlyph(
+				{
+					...g,
+					structure: resolvedStructure
+				},
+				syntax,
+				baseSquare,
+				1,
+				normalizedMetrics.descender
+			)
+		);
 	}
 
 	// Ensure stable glyph indexes and keep a direct name->index map.
@@ -188,6 +219,18 @@ export async function generateFont(
 	hhea.ascender = ascenderUnits;
 	hhea.descender = descenderUnits;
 	hhea.lineGap = 0;
+
+	// opentype.js 1.3.x can crash on generated fonts when a character is missing
+	// (charToGlyphIndex returns null, then GlyphSet.get calls _push()).
+	// Normalize missing lookups to .notdef (index 0).
+	const baseCharToGlyphIndex = font.charToGlyphIndex.bind(font);
+	(font as any).charToGlyphIndex = (value: string): number => {
+		const index = baseCharToGlyphIndex(value);
+		if (typeof index !== 'number' || Number.isNaN(index) || index < 0) {
+			return 0;
+		}
+		return index;
+	};
 
 	applyOpenTypeFeatures(font, glyphs, glyphIndexByName);
 

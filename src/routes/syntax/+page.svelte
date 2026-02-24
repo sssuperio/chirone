@@ -8,7 +8,7 @@
 	import type { Syntax, Rule } from '$lib/types';
 	import { syntaxes, glyphs } from '$lib/stores';
 	import { nanoid } from 'nanoid';
-	import _ from 'lodash';
+	import { getUniqueSymbolsFromGlyphs } from '$lib/GTL/structure';
 
 	import SyntaxEditor from '$lib/components/syntax/syntaxEditor.svelte';
 	import InputText from '$lib/ui/inputText.svelte';
@@ -26,17 +26,15 @@
 	 */
 
 	for (let syntax of $syntaxes) {
-		// Getting all symbols in syntax
+		const uniqueSymbols = getUniqueSymbols($glyphs);
 		const syntaxSymbols = syntax.rules.map((r) => r.symbol);
-		// Checking for additions
-		for (let symbol of getUniqueSymbols($glyphs)) {
+		for (let symbol of uniqueSymbols) {
 			if (!syntaxSymbols.includes(symbol)) {
 				syntax.rules.push(createEmptyRule(symbol));
 			}
 		}
-		// Removing if a symbol goes away
 		for (let symbol of syntaxSymbols) {
-			if (!getUniqueSymbols($glyphs).includes(symbol)) {
+			if (!uniqueSymbols.includes(symbol)) {
 				const extraRule = getRuleBySymbol(syntax, symbol);
 				const index = syntax.rules.indexOf(extraRule);
 				syntax.rules.splice(index, 1);
@@ -58,16 +56,7 @@
 	 */
 
 	function getUniqueSymbols(glyphs: Array<GlyphInput>): Array<string> {
-		const symbols = [];
-		for (const g of glyphs) {
-			const txt = g.structure.replace(/(\r\n|\n|\r)/gm, '');
-			if (txt) {
-				symbols.push(...txt.split(''));
-			}
-		}
-
-		// Unique symbols
-		return _.uniq(symbols);
+		return getUniqueSymbolsFromGlyphs(glyphs);
 	}
 
 	function addSyntax(name: string | null = null) {

@@ -1,20 +1,29 @@
 <script lang="ts">
 	import Button from '$lib/ui/button.svelte';
-	import type { Rule } from '$lib/types';
+	import { parseGlyphStructure, replaceGlyphStructureBody } from '$lib/GTL/structure';
+	import { ShapeKind, type Rule } from '$lib/types';
+	import { createEventDispatcher } from 'svelte';
 	import RuleShapePreview from './ruleShapePreview.svelte';
 
 	export let structure = '';
+	export let resolvedBody = '';
+	export let resolvedComponentSources: Array<Array<Array<string>>> = [];
 	export let brushes: Array<string> = [];
 	export let rulesBySymbol: Record<string, Rule> = {};
 	export let minRows = 12;
 	export let minColumns = 12;
+
+	const dispatch = createEventDispatcher<{ change: { structure: string } }>();
 
 	let selectedBrush = '';
 	let drawingMode: 'paint' | 'erase' | null = null;
 	let activePointerId: number | null = null;
 	let lastPaintedCellKey = '';
 
-	$: lines = structure ? structure.split(/\r?\n/) : [];
+	$: parsed = parseGlyphStructure(structure);
+	$: sourceBody = resolvedBody || parsed.body;
+	$: lines = sourceBody ? sourceBody.split(/\r?\n/) : [];
+	$: editableLines = parsed.body ? parsed.body.split(/\r?\n/) : [];
 	$: contentRows = lines.length;
 	$: contentColumns = Math.max(0, ...lines.map((line) => line.length));
 
@@ -27,16 +36,42 @@
 	$: gridMatrix = Array.from({ length: gridRows }, (_, row) =>
 		Array.from({ length: gridColumns }, (_, col) => lines[row]?.[col] ?? ' ')
 	);
+	$: componentSourceMatrix = Array.from({ length: gridRows }, (_, row) =>
+		Array.from({ length: gridColumns }, (_, col) => resolvedComponentSources[row]?.[col] ?? [])
+	);
+	$: componentNames = Array.from(
+		new Set(componentSourceMatrix.flatMap((row) => row.flatMap((names) => names.filter(Boolean))))
+	).sort((a, b) => a.localeCompare(b));
+	$: componentColorByName = new Map<string, string>(
+		componentNames.map((name, index) => [name, getPaletteColor(index, name)])
+	);
+	$: {
+		componentColorByName;
+		componentMixCache.clear();
+	}
 
 	$: if (!availableBrushes.includes(selectedBrush)) {
 		selectedBrush = availableBrushes[0] ?? '';
 	}
 
+	function createEditableMatrix(minRowCount: number, minColumnCount: number): Array<Array<string>> {
+		const rowCount = Math.max(minRowCount, editableLines.length || 1);
+		const columnCount = Math.max(
+			minColumnCount,
+			Math.max(0, ...editableLines.map((line) => line.length)) || 1
+		);
+
+		return Array.from({ length: rowCount }, (_, row) =>
+			Array.from({ length: columnCount }, (_, col) => editableLines[row]?.[col] ?? ' ')
+		);
+	}
+
 	function updateCell(row: number, col: number, value: string) {
-		const matrix: Array<Array<string>> = gridMatrix.map((matrixRow) => [...matrixRow]);
+		const matrix = createEditableMatrix(gridRows, gridColumns);
 
 		matrix[row][col] = value;
-		structure = serialize(matrix);
+		structure = replaceGlyphStructureBody(structure, serialize(matrix));
+		dispatch('change', { structure });
 	}
 
 	function serialize(matrix: Array<Array<string>>): string {
@@ -113,7 +148,69 @@
 	}
 
 	function clearAll() {
-		structure = '';
+		structure = replaceGlyphStructureBody(structure, '');
+		dispatch('change', { structure });
+	}
+
+	const componentPalette = [
+		'#fecaca', // red-200
+		'#bfdbfe', // blue-200
+		'#bbf7d0', // green-200
+		'#fde68a', // amber-200
+		'#ddd6fe', // violet-200
+		'#a5f3fc', // cyan-200
+		'#fbcfe8', // pink-200
+		'#c7d2fe', // indigo-200
+		'#99f6e4', // teal-200
+		'#e9d5ff', // purple-200
+		'#fed7aa', // orange-200
+		'#f5d0fe' // fuchsia-200
+	];
+
+	function hashString(value: string): number {
+		let hash = 0;
+		for (const char of value) {
+			hash = (hash << 5) - hash + char.charCodeAt(0);
+			hash |= 0;
+		}
+		return Math.abs(hash);
+	}
+
+	function getPaletteColor(index: number, componentName: string): string {
+		let accent = '';
+		if (index < componentPalette.length) {
+			accent = componentPalette[index];
+		} else {
+			const hash = hashString(componentName);
+			const hue = hash % 360;
+			accent = `hsl(${hue} 78% 82%)`;
+		}
+		return accent;
+	}
+
+	const componentMixCache = new Map<string, string>();
+
+	function getCombinedComponentColor(componentSources: Array<string>): string {
+		if (!componentSources.length) return '';
+		const key = componentSources.join('|');
+		const cached = componentMixCache.get(key);
+		if (cached) return cached;
+
+		const colors = componentSources
+			.map((componentName) => componentColorByName.get(componentName) ?? '')
+			.filter(Boolean);
+		if (!colors.length) return '';
+		if (colors.length === 1) return colors[0];
+
+		let mixedColor = colors[0];
+		for (let i = 1; i < colors.length; i++) {
+			const previousWeight = (i / (i + 1)) * 100;
+			const currentWeight = (1 / (i + 1)) * 100;
+			mixedColor = `color-mix(in srgb, ${mixedColor} ${previousWeight}%, ${colors[i]} ${currentWeight}%)`;
+		}
+
+		componentMixCache.set(key, mixedColor);
+		return mixedColor;
 	}
 </script>
 
@@ -163,14 +260,17 @@
 			>
 				{#each Array.from({ length: gridRows }) as _, row}
 					{#each Array.from({ length: gridColumns }) as __, col}
-						{@const cellValue = gridMatrix[row][col]}
+							{@const cellValue = gridMatrix[row][col]}
+							{@const componentSources = componentSourceMatrix[row][col]}
+							{@const isComponentCell = componentSources.length > 0}
+							{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
 						<button
 							type="button"
 							data-grid-cell="true"
 							data-row={row}
 							data-col={col}
-							style="touch-action: none;"
-							class="w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 hover:bg-blue-100"
+							style={`touch-action: none;${componentColor ? ` color: ${componentColor};` : ''}`}
+							class="w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 bg-white hover:bg-blue-100"
 							on:pointerdown={(event) => onPointerDown(row, col, event)}
 							on:touchstart|preventDefault={() => onTouchStart(row, col)}
 							on:contextmenu|preventDefault={(event) => paintCell(row, col, true)}
@@ -178,9 +278,15 @@
 							{#if cellValue === ' '}
 								<span class="text-slate-300">·</span>
 							{:else if rulesBySymbol[cellValue]}
-								<RuleShapePreview rule={rulesBySymbol[cellValue]} className="w-full h-full p-1" />
+								{#if rulesBySymbol[cellValue].shape.kind === ShapeKind.Void}
+									<span class={isComponentCell ? 'font-mono' : 'text-slate-500 font-mono'}
+										>{cellValue}</span
+									>
+								{:else}
+									<RuleShapePreview rule={rulesBySymbol[cellValue]} className="w-full h-full p-1" />
+								{/if}
 							{:else}
-								<span class="text-red-400">•</span>
+								<span class={isComponentCell ? '' : 'text-red-400'}>•</span>
 							{/if}
 						</button>
 					{/each}

@@ -5,6 +5,7 @@
 		isValidGlyphName,
 		normalizeGlyphNameInput
 	} from '$lib/GTL/glyphName';
+	import { parseGlyphStructure, resolveGlyphStructures } from '$lib/GTL/structure';
 	import { findCharInUnicodeList } from '$lib/GTL/unicode';
 	import { glyphs, selectedGlyph } from '$lib/stores';
 	import type { GlyphInput } from '$lib/types';
@@ -26,6 +27,7 @@
 	$: glyphAlreadyExists = doesGlyphAlreadyExist(normalizedGlyphName);
 	$: ligatureComponents = getLigatureComponentNames(normalizedGlyphName);
 	$: alternateBase = getAlternateBaseName(normalizedGlyphName);
+	$: resolvedGlyphStructures = resolveGlyphStructures($glyphs);
 	$: autoStructure = getAutoStructure(normalizedGlyphName);
 	$: canAdd = Boolean(normalizedGlyphName && isValidGlyphName(normalizedGlyphName) && !glyphAlreadyExists);
 	$: missingLigatureComponents =
@@ -41,6 +43,16 @@
 
 	function findGlyphByName(name: string): GlyphInput | undefined {
 		return $glyphs.find((glyph) => glyph.name === name);
+	}
+
+	function getResolvedStructureByGlyphName(name: string): string {
+		if (resolvedGlyphStructures.has(name)) {
+			return resolvedGlyphStructures.get(name) ?? '';
+		}
+
+		const glyph = findGlyphByName(name);
+		if (!glyph) return '';
+		return parseGlyphStructure(glyph.structure).body;
 	}
 
 	function splitRows(structure: string): Array<string> {
@@ -76,7 +88,9 @@
 			const componentGlyphs = components.map((name) => findGlyphByName(name));
 			if (componentGlyphs.some((glyph) => !glyph)) return '';
 
-			const componentStructures = (componentGlyphs as Array<GlyphInput>).map((glyph) => glyph.structure);
+			const componentStructures = (componentGlyphs as Array<GlyphInput>).map((glyph) =>
+				getResolvedStructureByGlyphName(glyph.name)
+			);
 			if (componentStructures.some((structure) => !structure.trim())) return '';
 
 			return mergeStructuresHorizontally(componentStructures);
@@ -88,7 +102,7 @@
 		const baseGlyph = findGlyphByName(baseName);
 		if (!baseGlyph) return '';
 
-		return baseGlyph.structure ?? '';
+		return getResolvedStructureByGlyphName(baseGlyph.name);
 	}
 
 	function addGlyph() {
