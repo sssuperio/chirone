@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type opentype from 'opentype.js';
 	import { metrics } from '$lib/stores';
+	import { cellsToUnits, normalizeFontMetrics } from '$lib/GTL/metrics';
 
 	export let font: opentype.Font;
 	export let text: string;
@@ -37,8 +38,6 @@
 		advanceWidth: number;
 		leftSideBearing: number;
 		rightSideBearing: number;
-		capHeightEstimated: boolean;
-		xHeightEstimated: boolean;
 	};
 
 	let previewMetrics: PreviewMetrics | undefined;
@@ -109,29 +108,17 @@
 	}
 
 	function buildPreviewMetrics(glyph: opentype.Glyph): PreviewMetrics {
-		const safeUpm = Math.max(1, finite(font?.unitsPerEm, finite($metrics.UPM, 1000)));
-		const safeHeight = Math.max(1, finite($metrics.height, 5));
-		const safeBaseline = Math.min(safeHeight, Math.max(0, finite($metrics.baseline, 1)));
-		const baseSquare = safeUpm / safeHeight;
-
-		const fallbackAscender = baseSquare * (safeHeight - safeBaseline);
-		const fallbackDescender = -baseSquare * safeBaseline;
-
-		const ascender = finite(font?.ascender, fallbackAscender);
-		const descender = finite(font?.descender, fallbackDescender);
+		const normalizedMetrics = normalizeFontMetrics($metrics);
+		const safeUpm = Math.max(1, finite(font?.unitsPerEm, finite(normalizedMetrics.UPM, 1000)));
+		const ascender = cellsToUnits(normalizedMetrics, normalizedMetrics.ascender);
+		const descender = -cellsToUnits(normalizedMetrics, normalizedMetrics.descender);
+		const capHeight = cellsToUnits(normalizedMetrics, normalizedMetrics.capHeight);
+		const xHeight = cellsToUnits(normalizedMetrics, normalizedMetrics.xHeight);
 
 		const bbox = glyph.getBoundingBox();
 		const advanceWidth = finite(glyph.advanceWidth, safeUpm * 0.6);
 		const leftSideBearing = Number.isFinite(bbox.x1) ? bbox.x1 : 0;
 		const rightSideBearing = Number.isFinite(bbox.x2) ? advanceWidth - bbox.x2 : 0;
-
-		const os2 = (font as any).tables?.os2;
-		const capHeightRaw = Number(os2?.sCapHeight);
-		const xHeightRaw = Number(os2?.sxHeight);
-		const capHeightEstimated = !Number.isFinite(capHeightRaw) || capHeightRaw <= 0;
-		const xHeightEstimated = !Number.isFinite(xHeightRaw) || xHeightRaw <= 0;
-		const capHeight = capHeightEstimated ? Math.round(ascender * 0.9) : capHeightRaw;
-		const xHeight = xHeightEstimated ? Math.round(capHeight * 0.7) : xHeightRaw;
 
 		return {
 			upm: safeUpm,
@@ -141,9 +128,7 @@
 			xHeight,
 			advanceWidth,
 			leftSideBearing,
-			rightSideBearing,
-			capHeightEstimated,
-			xHeightEstimated
+			rightSideBearing
 		};
 	}
 
@@ -176,19 +161,20 @@
 			const padBottom = 40;
 			const previewHeight = height - padTop - padBottom;
 
-			const safeHeightMetric = Math.max(1, finite($metrics.height, 5));
-			const safeBaselineMetric = Math.min(
-				safeHeightMetric,
-				Math.max(0, finite($metrics.baseline, 1))
+			const normalizedMetrics = normalizeFontMetrics($metrics);
+			const safeHeightMetric = Math.max(1, finite(normalizedMetrics.height, 5));
+			const safeDescenderMetric = Math.min(
+				safeHeightMetric - 1,
+				Math.max(0, finite(normalizedMetrics.descender, 1))
 			);
-			const ascenderCells = safeHeightMetric - safeBaselineMetric;
+			const ascenderCells = normalizedMetrics.ascender;
 			const fontSize = previewHeight;
 			const unit = fontSize / safeHeightMetric;
-			const baselineY = padTop + previewHeight - unit * safeBaselineMetric;
+			const baselineY = padTop + previewHeight - unit * safeDescenderMetric;
 			const ascenderY = baselineY - unit * ascenderCells;
-			const descenderY = baselineY + unit * safeBaselineMetric;
-			const capHeightY = baselineY - unit * ascenderCells * 0.9;
-			const xHeightY = baselineY - unit * ascenderCells * 0.7;
+			const descenderY = baselineY + unit * safeDescenderMetric;
+			const capHeightY = baselineY - unit * normalizedMetrics.capHeight;
+			const xHeightY = baselineY - unit * normalizedMetrics.xHeight;
 
 			const scale = fontSize / m.upm;
 			const bbox = glyph.getBoundingBox();
@@ -209,7 +195,7 @@
 				ctx,
 				capHeightY,
 				colors.capHeight,
-				`Cap height${m.capHeightEstimated ? ' (stima)' : ''}`,
+				`Cap height`,
 				padLeft,
 				width - padRight
 			);
@@ -217,7 +203,7 @@
 				ctx,
 				xHeightY,
 				colors.xHeight,
-				`x-height${m.xHeightEstimated ? ' (stima)' : ''}`,
+				`x-height`,
 				padLeft,
 				width - padRight
 			);

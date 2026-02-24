@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { glyphs as glyphsStore } from '$lib/stores';
 	import type { GlyphInput } from '$lib/types';
-	import { getUnicodeNumber } from '$lib/GTL/unicode';
+	import { resolveUnicodeNumber } from '$lib/GTL/glyphName';
 
 	import InputText from '$lib/ui/inputText.svelte';
 
@@ -19,12 +19,9 @@
 			throw new Error('char must be a single character');
 		}
 		for (let g of $glyphsStore) {
-			try {
-				if (getUnicodeNumber(g.name) === char.charCodeAt(0)) {
-					return g;
-				}
-			} catch (e) {
-				console.log(e, g.name);
+			const unicode = resolveUnicodeNumber(g.name);
+			if (unicode === char.charCodeAt(0)) {
+				return g;
 			}
 		}
 	}

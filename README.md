@@ -1,38 +1,40 @@
-# create-svelte
+# Chirone
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/master/packages/create-svelte).
+Font design playground built with SvelteKit.
 
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
+## Local development
 
 ```bash
-# create a new project in the current directory
-npm create svelte@latest
-
-# create a new project in my-app
-npm create svelte@latest my-app
+pnpm install
+pnpm run dev -- --open
 ```
 
-## Developing
+## Realtime collaboration (SSE + Go)
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+This repository includes a Go collaboration server that:
+
+- streams live project updates over SSE (`/api/events`)
+- accepts project writes (`PUT /api/project`)
+- dumps each project snapshot to one JSON file on every change
+
+Start the server:
 
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+cd collab-server
+go run . --addr :8090 --data-dir ./data
 ```
 
-## Building
-
-To create a production version of your app:
+or with Task:
 
 ```bash
-npm run build
+task collab:server
 ```
 
-You can preview the production build with `npm run preview`.
+Set frontend env vars (`.env`, see `.env.example`):
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+```bash
+VITE_COLLAB_SERVER=http://localhost:8090
+VITE_COLLAB_PROJECT=default
+```
+
+When `VITE_COLLAB_SERVER` is set, the app syncs `glyphs`, `syntaxes`, and `metrics` in realtime.

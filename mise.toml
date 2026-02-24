@@ -1,3 +1,4 @@
 [tools]
 node = "latest"
 task = "latest"
+go = "latest"

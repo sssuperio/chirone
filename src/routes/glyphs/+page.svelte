@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { GlyphInput, Rule, Syntax } from '$lib/types';
-	import { glyphs, selectedGlyph, syntaxes } from '$lib/stores';
+import type { GlyphInput, Rule, Syntax } from '$lib/types';
+import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
 	import { nanoid } from 'nanoid';
 	import _ from 'lodash';
 
@@ -10,10 +10,11 @@
 	import GlyphPainter from '$lib/components/glyph/glyphPainter.svelte';
 	import GlyphPreview from '$lib/partials/glyphPreview.svelte';
 
-	import { createEmptyRule } from '$lib/types';
+	import { ShapeKind, createEmptyRule } from '$lib/types';
 	import DeleteButton from '$lib/ui/deleteButton.svelte';
 	import AddGlyphModal from './AddGlyphModal.svelte';
-	import { UNICODE, getUnicodeNumber, glyphStringFromName } from '$lib/GTL/unicode';
+	import { UNICODE } from '$lib/GTL/unicode';
+	import { resolveUnicodeNumber } from '$lib/GTL/glyphName';
 
 	//
 
@@ -83,11 +84,28 @@
 	}
 
 	function sortGlyphs(glyphs: GlyphInput[]): GlyphInput[] {
-		return glyphs.sort((a, b) => {
-			const aUnicode = getUnicodeNumber(a.name);
-			const bUnicode = getUnicodeNumber(b.name);
-			return aUnicode - bUnicode;
+		return [...glyphs].sort((a, b) => {
+			const aUnicode = resolveUnicodeNumber(a.name);
+			const bUnicode = resolveUnicodeNumber(b.name);
+
+			if (aUnicode !== undefined && bUnicode !== undefined) {
+				return aUnicode - bUnicode;
+			}
+			if (aUnicode !== undefined) return -1;
+			if (bUnicode !== undefined) return 1;
+
+			return a.name.localeCompare(b.name);
 		});
+	}
+
+	function getGlyphString(glyphName: string): string | undefined {
+		const unicode = resolveUnicodeNumber(glyphName);
+		if (unicode === undefined) return undefined;
+		try {
+			return String.fromCodePoint(unicode);
+		} catch {
+			return undefined;
+		}
 	}
 
 	function getSyntaxSymbols(syntaxes: Array<Syntax>): Array<string> {
@@ -114,6 +132,37 @@
 		return map;
 	}
 
+	function getVoidFillSymbol(rules: Record<string, Rule>): string {
+		// Prefer a visible symbol mapped as Void (not blank space).
+		for (const [symbol, rule] of Object.entries(rules)) {
+			if (rule.shape.kind === ShapeKind.Void && symbol !== ' ') {
+				return symbol;
+			}
+		}
+
+		// If only blank-space Void exists, use a visible fallback.
+		return '.';
+	}
+
+	function fillVoidInStructure(structure: string, fillSymbol: string, targetHeight: number): string {
+		const sourceRows = structure ? structure.split(/\r?\n/) : [];
+		const width = Math.max(1, ...sourceRows.map((row) => row.length));
+		const height = Math.max(1, targetHeight, sourceRows.length);
+		const rows = Array.from({ length: height }, (_, index) => sourceRows[index] ?? '');
+
+		if (width <= 0) return structure;
+
+		return rows
+			.map((row) =>
+				row
+					.padEnd(width, ' ')
+					.split('')
+					.map((char) => (char === ' ' ? fillSymbol : char))
+					.join('')
+			)
+			.join('\n');
+	}
+
 	//
 
 	let isAddGlyphModalOpen = false;
@@ -123,6 +172,8 @@
 
 	$: brushSymbols = getSyntaxSymbols($syntaxes);
 	$: rulesBySymbol = getRulesBySymbol($syntaxes);
+	$: voidFillSymbol = getVoidFillSymbol(rulesBySymbol);
+	$: fillTargetHeight = Math.max(1, Math.round($metrics.height || 1));
 
 	function updateDesignPanelRatio(event: PointerEvent) {
 		if (!isResizingDesignPanels || !designPanelsEl) return;
@@ -163,7 +214,7 @@
 			<svelte:fragment slot="listTitle">Lista glifi</svelte:fragment>
 			<svelte:fragment slot="items">
 				{#each sortGlyphs($glyphs) as g (g.id)}
-					{@const glyphString = glyphStringFromName(g.name)}
+					{@const glyphString = getGlyphString(g.name)}
 					<SidebarTile selection={selectedGlyph} id={g.id}>
 						{#if glyphString}
 							{glyphString}
@@ -181,7 +232,7 @@
 	<div class="p-8 space-y-8 grow flex flex-col items-stretch">
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
-				{@const glyphString = glyphStringFromName(g.name)}
+				{@const glyphString = getGlyphString(g.name)}
 				{@const glyphName = UNICODE[g.name]}
 				<div class="shrink-0 flex justify-between items-center">
 					<div class="flex gap-4">
@@ -210,7 +261,20 @@
 							style={`grid-template-rows: ${Math.round(designTopRatio * 100)}% 0.75rem ${Math.round((1 - designTopRatio) * 100)}%;`}
 						>
 							<div class="min-h-0 flex flex-col">
-								<p class="text-small font-mono text-slate-900 mb-2 text-sm">Struttura glifo</p>
+								<div class="mb-2 flex items-center justify-between gap-3">
+									<p class="text-small font-mono text-slate-900 text-sm">Struttura glifo</p>
+									<Button
+										on:click={() => {
+											g.structure = fillVoidInStructure(
+												g.structure,
+												voidFillSymbol,
+												fillTargetHeight
+											);
+										}}
+									>
+										Fill void ({voidFillSymbol} / h={fillTargetHeight})
+									</Button>
+								</div>
 								<textarea
 									class="h-0 grow min-h-0 p-2 bg-slate-200 tracking-[0.75em] hover:bg-slate-300 font-mono focus:ring-4"
 									bind:value={g.structure}

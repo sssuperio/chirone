@@ -13,10 +13,22 @@ tasks:
       - pnpm install
 
   dev:
-    desc: Start the development server
+    desc: Start collab server and Vite development server
+    deps:
+      - collab:server
+      - dev:web
+
+  dev:web:
+    desc: Start only the Vite development server
     deps: [install]
     cmds:
       - pnpm run dev -- --open
+
+  collab:server:
+    desc: Start the Go collaboration server (SSE + file persistence)
+    dir: ./collab-server
+    cmds:
+      - go run . --addr :8090 --data-dir ./data
 
   build:
     desc: Build the app for production

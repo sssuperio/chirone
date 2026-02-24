@@ -16,10 +16,36 @@
 
 	let previewGlyphs: Array<GlyphInput> = [];
 	let validText = '';
+	let downloadError = '';
+
+	function toSafeFileSegment(input: string): string {
+		const cleaned = input.trim().replace(/\s+/g, '-');
+		return cleaned.replace(/[^a-zA-Z0-9._-]/g, '');
+	}
 
 	async function downloadFont(s: Syntax) {
-		const font = await generateFont(s, $glyphs, $metrics);
-		font.download();
+		downloadError = '';
+
+		try {
+			const font = await generateFont(s, $glyphs, $metrics);
+			const fileName = `GTL-${toSafeFileSegment(s.name) || 'style'}.otf`;
+			const buffer = font.toArrayBuffer();
+			const blob = new Blob([buffer], { type: 'font/otf' });
+			const objectUrl = URL.createObjectURL(blob);
+
+			const link = document.createElement('a');
+			link.href = objectUrl;
+			link.download = fileName;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+
+			// Revoke asynchronously to avoid cancelling the download in some browsers.
+			window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+		} catch (error) {
+			downloadError = error instanceof Error ? error.message : String(error);
+			console.error('downloadFont failed', error);
+		}
 	}
 </script>
 
@@ -39,6 +65,10 @@
 	</div>
 
 	<div class="p-8 space-y-8">
+		{#if downloadError}
+			<p class="text-sm font-mono text-red-600">Errore download: {downloadError}</p>
+		{/if}
+
 		{#each $syntaxes as syntax (syntax.name)}
 			<FontGenerator glyphs={previewGlyphs} {syntax} let:font>
 				{#if font}
