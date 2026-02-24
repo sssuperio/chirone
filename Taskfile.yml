@@ -77,3 +77,25 @@ tasks:
       - task: check
       - task: lint
       - task: test
+
+  docker:build:
+    desc: Build Docker image (UI + collab server)
+    cmds:
+      - docker build -t ${IMAGE:-chirone}:${TAG:-latest} .
+
+  docker:run:
+    desc: Run Docker image on localhost:8080 with persistent data volume
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -p ${PORT:-8080}:8080 -v ${VOLUME:-chirone-data}:/app/data ${IMAGE:-chirone}:${TAG:-latest}
+
+  docker:tag:ghcr:
+    desc: Tag local image for GHCR
+    cmds:
+      - docker tag ${IMAGE:-chirone}:${TAG:-latest} ghcr.io/${OWNER}/${IMAGE:-chirone}:${TAG:-latest}
+
+  docker:push:ghcr:
+    desc: Push image to GHCR
+    deps: [docker:tag:ghcr]
+    cmds:
+      - docker push ghcr.io/${OWNER}/${IMAGE:-chirone}:${TAG:-latest}

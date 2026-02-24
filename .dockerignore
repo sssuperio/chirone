@@ -1,0 +1,13 @@
+.git
+.gitignore
+.svelte-kit
+node_modules
+docs
+dist
+coverage
+playwright-report
+test-results
+.DS_Store
+*.log
+collab-server/data
+collab-server/collab-server

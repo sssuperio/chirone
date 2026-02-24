@@ -3,6 +3,18 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 const dev = process.argv.includes('dev');
 
+function normalizeBasePath(value) {
+	const raw = (value ?? '').trim();
+	if (!raw || raw === '/') return '';
+
+	const withLeadingSlash = raw.startsWith('/') ? raw : `/${raw}`;
+	const withoutTrailingSlash = withLeadingSlash.replace(/\/+$/g, '');
+
+	return withoutTrailingSlash === '/' ? '' : withoutTrailingSlash;
+}
+
+const productionBasePath = normalizeBasePath(process.env.PUBLIC_BASE_PATH ?? '/GTL-web');
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	// Consult https://kit.svelte.dev/docs/integrations#preprocessors
@@ -16,7 +28,7 @@ const config = {
 		}),
 
 		paths: {
-			base: dev ? '' : '/GTL-web'
+			base: dev ? '' : productionBasePath
 		}
 	}
 };

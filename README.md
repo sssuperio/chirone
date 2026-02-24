@@ -38,3 +38,37 @@ VITE_COLLAB_PROJECT=default
 ```
 
 When `VITE_COLLAB_SERVER` is set, the app syncs `glyphs`, `syntaxes`, and `metrics` in realtime.
+
+## Docker
+
+Build a single image containing:
+
+- prebuilt SvelteKit static app (`docs`)
+- Go collaboration server (serving UI + `/api/*` + SSE)
+
+Build:
+
+```bash
+docker build -t chirone:latest .
+```
+
+Run:
+
+```bash
+docker run --rm -p 8080:8080 -v chirone-data:/app/data chirone:latest
+```
+
+Open: `http://localhost:8080/glyphs`
+
+With Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+### Publish to GHCR
+
+```bash
+docker tag chirone:latest ghcr.io/<owner>/chirone:latest
+docker push ghcr.io/<owner>/chirone:latest
+```

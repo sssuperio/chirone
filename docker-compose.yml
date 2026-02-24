@@ -1,0 +1,14 @@
+services:
+  chirone:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: "${IMAGE:-chirone}:${TAG:-latest}"
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - "${VOLUME:-chirone-data}:/app/data"
+    restart: unless-stopped
+
+volumes:
+  chirone-data:

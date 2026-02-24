@@ -9,8 +9,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -315,6 +317,7 @@ func (h *hub) updateProject(projectID string, req updateProjectRequest) (project
 type server struct {
 	hub         *hub
 	allowOrigin string
+	uiDir       string
 }
 
 func (s *server) writeCORS(w http.ResponseWriter, r *http.Request) {
@@ -472,24 +475,84 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.uiDir == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	cleanPath := pathpkg.Clean("/" + r.URL.Path)
+	relativePath := strings.TrimPrefix(cleanPath, "/")
+	if relativePath == "" || relativePath == "." {
+		relativePath = "index.html"
+	}
+
+	serveIfExists := func(path string) bool {
+		target := filepath.Join(s.uiDir, filepath.FromSlash(path))
+		if !fileExists(target) {
+			return false
+		}
+		http.ServeFile(w, r, target)
+		return true
+	}
+
+	if pathpkg.Ext(relativePath) != "" {
+		if serveIfExists(relativePath) {
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
+	if serveIfExists(relativePath + ".html") {
+		return
+	}
+
+	if serveIfExists(pathpkg.Join(relativePath, "index.html")) {
+		return
+	}
+
+	if serveIfExists("index.html") {
+		return
+	}
+
+	http.NotFound(w, r)
+}
+
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		s.writeCORS(w, r)
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("chirone collab server\n"))
-	})
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/project", s.handleProject)
 	mux.HandleFunc("/api/events", s.handleEvents)
+
+	if s.uiDir != "" {
+		mux.HandleFunc("/", s.handleUI)
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			s.writeCORS(w, r)
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte("chirone collab server\n"))
+		})
+	}
+
 	return requestLogger(mux)
 }
 
@@ -501,10 +564,11 @@ func requestLogger(next http.Handler) http.Handler {
 	})
 }
 
-func run(ctx context.Context, addr, dataDir, allowOrigin string) error {
+func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
 	srv := &server{
 		hub:         newHub(dataDir),
 		allowOrigin: allowOrigin,
+		uiDir:       strings.TrimSpace(uiDir),
 	}
 
 	httpServer := &http.Server{
@@ -519,7 +583,11 @@ func run(ctx context.Context, addr, dataDir, allowOrigin string) error {
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("collab server listening on %s (data dir: %s)", addr, dataDir)
+	if srv.uiDir != "" {
+		log.Printf("collab server listening on %s (data dir: %s, ui dir: %s)", addr, dataDir, srv.uiDir)
+	} else {
+		log.Printf("collab server listening on %s (data dir: %s)", addr, dataDir)
+	}
 	return httpServer.ListenAndServe()
 }
 
@@ -527,10 +595,11 @@ func main() {
 	addr := flag.String("addr", ":8090", "address to listen on")
 	dataDir := flag.String("data-dir", "./data", "directory where project snapshots are stored")
 	allowOrigin := flag.String("allow-origin", "*", "CORS allowed origin (or * for all)")
+	uiDir := flag.String("ui-dir", "", "optional directory to serve static UI files from")
 	flag.Parse()
 
 	ctx := context.Background()
-	if err := run(ctx, *addr, *dataDir, *allowOrigin); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := run(ctx, *addr, *dataDir, *allowOrigin, *uiDir); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
