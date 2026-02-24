@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Button from '$lib/ui/button.svelte';
 	import { parseGlyphStructure, replaceGlyphStructureBody } from '$lib/GTL/structure';
 	import { ShapeKind, type Rule } from '$lib/types';
 	import { createEventDispatcher } from 'svelte';
@@ -147,11 +146,6 @@
 		paintCellWithMode(row, col);
 	}
 
-	function clearAll() {
-		structure = replaceGlyphStructureBody(structure, '');
-		dispatch('change', { structure });
-	}
-
 	const componentPalette = [
 		'#fecaca', // red-200
 		'#bfdbfe', // blue-200
@@ -224,11 +218,6 @@
 />
 
 <div class="h-full min-h-0 flex flex-col gap-3">
-	<div class="shrink-0 flex flex-wrap items-center gap-2">
-		<p class="text-small font-mono text-slate-900 text-sm">Visual designer</p>
-		<Button on:click={clearAll}>Pulisci</Button>
-	</div>
-
 	<div class="shrink-0 flex flex-wrap gap-2 bg-slate-100 p-2">
 		{#if availableBrushes.length}
 			{#each availableBrushes as symbol (symbol)}

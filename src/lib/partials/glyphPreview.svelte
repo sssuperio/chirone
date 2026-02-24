@@ -73,24 +73,21 @@
 	{:else if !$syntaxes.length}
 		<p class="text-sm font-mono text-slate-500">Nessuna sintassi disponibile per l'anteprima.</p>
 	{:else}
-		{#each $syntaxes as syntax, i}
-			<FontGenerator {syntax} glyphs={previewGlyphs} let:font>
+			{#each $syntaxes as syntax, i}
+				<FontGenerator {syntax} glyphs={previewGlyphs} let:font>
 					{#if font}
 						<div class={`${compact ? 'space-y-1' : 'space-y-2'} w-full max-w-full min-w-0 overflow-x-hidden`}>
-						<p class="text-small font-mono text-slate-900 text-sm">
-							{font.names.fontSubfamily.en}
-						</p>
-								<FontDisplayMetrics
-									{canvasWidth}
-									{canvasHeight}
-									{font}
-									glyphName={currentGlyph.name}
-									text={currentGlyphText}
-									showLegend={showLegend && i === 0}
-								/>
-					</div>
-				{/if}
-			</FontGenerator>
-		{/each}
+							<FontDisplayMetrics
+								{canvasWidth}
+								{canvasHeight}
+								{font}
+								glyphName={currentGlyph.name}
+								text={currentGlyphText}
+								showLegend={showLegend && i === 0}
+							/>
+						</div>
+					{/if}
+				</FontGenerator>
+			{/each}
 	{/if}
 </div>

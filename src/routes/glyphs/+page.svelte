@@ -30,6 +30,7 @@
 		serializeGlyphStructure,
 		type GlyphComponentRef
 	} from '$lib/GTL/structure';
+	import { reflectGlyphStructureBody } from '$lib/GTL/structureTransforms';
 
 	//
 
@@ -442,6 +443,26 @@
 		touchGlyphs();
 	}
 
+	function mirrorSelectedGlyphLeftRight() {
+		if (!selectedGlyphData) return;
+		const parsed = parseGlyphStructure(selectedGlyphData.structure);
+		selectedGlyphData.structure = replaceGlyphStructureBody(
+			selectedGlyphData.structure,
+			reflectGlyphStructureBody(parsed.body, 'vertical', rulesBySymbol)
+		);
+		touchGlyphs();
+	}
+
+	function flipSelectedGlyphTopBottom() {
+		if (!selectedGlyphData) return;
+		const parsed = parseGlyphStructure(selectedGlyphData.structure);
+		selectedGlyphData.structure = replaceGlyphStructureBody(
+			selectedGlyphData.structure,
+			reflectGlyphStructureBody(parsed.body, 'horizontal', rulesBySymbol)
+		);
+		touchGlyphs();
+	}
+
 	function getFloatingToolbarSize(): { width: number; height: number } {
 		if (!floatingToolbarElement) {
 			return { width: 160, height: 220 };
@@ -550,6 +571,18 @@
 			if (plain && key === 'v') {
 				event.preventDefault();
 				fillVoidSelectedGlyph();
+				return;
+			}
+
+			if (plain && key === 'm') {
+				event.preventDefault();
+				mirrorSelectedGlyphLeftRight();
+				return;
+			}
+
+			if (plain && key === 'x') {
+				event.preventDefault();
+				flipSelectedGlyphTopBottom();
 				return;
 			}
 
@@ -724,20 +757,6 @@
 
 								{#if activeGlyphEditorTab === 'glyphStructure'}
 									<div class="h-0 grow min-h-0 flex flex-col">
-										<div class="mb-2 flex items-center justify-between gap-3">
-											<Button
-												on:click={() => {
-													g.structure = fillVoidInStructure(
-														g.structure,
-														voidFillSymbol,
-														fillTargetHeight
-													);
-													touchGlyphs();
-												}}
-											>
-												Fill void ({voidFillSymbol} / h={fillTargetHeight})
-											</Button>
-										</div>
 										<div
 											class="mb-2 p-2 border border-slate-300 bg-slate-50 space-y-2 font-mono text-xs"
 										>
@@ -1022,6 +1041,32 @@
 			>
 			<span>{isDesignFullscreen ? 'Exit full screen' : 'Full screen'}</span>
 			<span class="ml-auto text-[10px] text-slate-500">F</span>
+		</button>
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			title="Mirror L/R (M)"
+			on:click={mirrorSelectedGlyphLeftRight}
+			disabled={!selectedGlyphData}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>M</span
+			>
+			<span>Mirror L/R</span>
+			<span class="ml-auto text-[10px] text-slate-500">M</span>
+		</button>
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			title="Flip U/D (X)"
+			on:click={flipSelectedGlyphTopBottom}
+			disabled={!selectedGlyphData}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>X</span
+			>
+			<span>Flip U/D</span>
+			<span class="ml-auto text-[10px] text-slate-500">X</span>
 		</button>
 		<button
 			type="button"
