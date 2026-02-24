@@ -7,6 +7,7 @@ import type { BaseProps, BooleanProp, CurveProps, OrientationProp, StringProp } 
 export enum ShapeKind {
 	Void = 'void',
 	Rectangle = 'rectangle',
+	Circle = 'circle',
 	Ellipse = 'ellipse',
 	Quarter = 'quarter',
 	Triangle = 'triangle',
@@ -27,6 +28,11 @@ export type VoidShape = ShapeTemplate<ShapeKind.Void, VoidProps>;
 
 export type RectangleProps = BaseProps;
 export type RectangleShape = ShapeTemplate<ShapeKind.Rectangle, RectangleProps>;
+
+// Circle
+
+export type CircleProps = BaseProps;
+export type CircleShape = ShapeTemplate<ShapeKind.Circle, CircleProps>;
 
 // Ellipse
 
@@ -62,5 +68,19 @@ export type SVGShape = ShapeTemplate<ShapeKind.SVG, SVGProps>;
  * Utility union types
  */
 
-export type Props = VoidProps | RectangleProps | EllipseProps | QuarterProps | TriangleProps | SVGProps;
-export type Shape = VoidShape | RectangleShape | EllipseShape | QuarterShape | TriangleShape | SVGShape;
+export type Props =
+	| VoidProps
+	| RectangleProps
+	| CircleProps
+	| EllipseProps
+	| QuarterProps
+	| TriangleProps
+	| SVGProps;
+export type Shape =
+	| VoidShape
+	| RectangleShape
+	| CircleShape
+	| EllipseShape
+	| QuarterShape
+	| TriangleShape
+	| SVGShape;

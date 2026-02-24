@@ -8,6 +8,7 @@ import {
 import type { Rule, Syntax } from '../types';
 import {
 	rectangle,
+	circle,
 	ellipse,
 	quarter,
 	triangle,
@@ -77,6 +78,10 @@ export async function drawPath(box: paper.Rectangle, rule: Rule): Promise<Array<
 
 	if (rule.shape.kind == ShapeKind.Rectangle) {
 		paths.push(...(await rectangle(box, {})));
+	}
+	//
+	else if (rule.shape.kind == ShapeKind.Circle) {
+		paths.push(...(await circle(box, {})));
 	}
 	//
 	else if (rule.shape.kind == ShapeKind.Ellipse) {

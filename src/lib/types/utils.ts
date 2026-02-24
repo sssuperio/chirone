@@ -3,6 +3,7 @@ import { PropKind } from './props';
 import { ValueKind } from './values';
 import { Orientation } from './values';
 import type {
+	CircleProps,
 	RectangleProps,
 	EllipseProps,
 	QuarterProps,
@@ -51,6 +52,12 @@ export function stringPropFixed(v: string): StringProp {
  */
 
 export const rectangleProps: RectangleProps = {
+	scale_x: numberPropFixed(1),
+	scale_y: numberPropFixed(1),
+	rotation: numberPropFixed(0)
+};
+
+export const circleProps: CircleProps = {
 	scale_x: numberPropFixed(1),
 	scale_y: numberPropFixed(1),
 	rotation: numberPropFixed(0)

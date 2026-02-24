@@ -5,6 +5,7 @@
 		ShapeKind,
 		voidProps,
 		rectangleProps,
+		circleProps,
 		ellipseProps,
 		quarterProps,
 		triangleProps,
@@ -34,6 +35,7 @@
 		const data: Record<ShapeKind, Props> = {
 			void: voidProps,
 			rectangle: rectangleProps,
+			circle: circleProps,
 			ellipse: ellipseProps,
 			quarter: quarterProps,
 			triangle: triangleProps,
@@ -48,6 +50,7 @@
 
 	const shapeOptions: SelectOptions<ShapeKind> = [
 		{ label: 'rectangle', value: ShapeKind.Rectangle },
+		{ label: 'circle', value: ShapeKind.Circle },
 		{ label: 'ellipse', value: ShapeKind.Ellipse },
 		{ label: 'quarter', value: ShapeKind.Quarter },
 		{ label: 'triangle', value: ShapeKind.Triangle },

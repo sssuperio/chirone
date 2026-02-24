@@ -56,6 +56,11 @@ export const rectangle: Shape = async (box) => {
 	return [new paper.Path.Rectangle(box)];
 };
 
+export const circle: Shape = async (box) => {
+	const radius = Math.min(box.width, box.height) / 2;
+	return [new paper.Path.Circle(box.center, radius)];
+};
+
 //
 
 export type SquaringProp = {
