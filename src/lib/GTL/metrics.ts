@@ -20,6 +20,13 @@ function toDiscrete(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, rounded));
 }
 
+function snapUPMToDiscreteCellGrid(UPM: number, height: number): number {
+	const safeHeight = Math.max(1, Math.round(height));
+	const safeUPM = Math.max(safeHeight, Math.round(UPM));
+	const snapped = Math.round(safeUPM / safeHeight) * safeHeight;
+	return Math.max(safeHeight, snapped);
+}
+
 export function estimateVerticalMetrics(height: number, descender: number) {
 	const safeHeight = Math.max(1, Math.round(height));
 	const safeDescender = toDiscrete(descender, 0, Math.max(0, safeHeight - 1));
@@ -64,10 +71,11 @@ export function normalizeFontMetrics(input: SafeFontMetricsLike): FontMetrics {
 	);
 
 	const defaultUpm = 5 * 5 * 5 * 2 * 2 * 5;
-	const UPM = Math.max(
+	const requestedUPM = Math.max(
 		height,
 		toDiscrete(toFiniteNumber(input?.UPM, defaultUpm), height, Number.MAX_SAFE_INTEGER)
 	);
+	const UPM = snapUPMToDiscreteCellGrid(requestedUPM, vertical.height);
 
 	return {
 		UPM,
@@ -87,7 +95,8 @@ export const defaultFontMetrics: FontMetrics = normalizeFontMetrics({
 });
 
 export function unitsPerCell(metrics: FontMetrics): number {
-	return metrics.UPM / metrics.height;
+	const safeHeight = Math.max(1, Math.round(metrics.height));
+	return Math.round(metrics.UPM / safeHeight);
 }
 
 export function cellsToUnits(metrics: FontMetrics, cells: number): number {
