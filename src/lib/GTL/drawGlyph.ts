@@ -108,8 +108,21 @@ export async function drawPath(box: paper.Rectangle, rule: Rule): Promise<Array<
 	}
 	//
 	else if (rule.shape.kind == ShapeKind.SVG) {
+		const rawPath =
+			rule.shape?.props?.path && typeof rule.shape.props.path === 'object'
+				? calcStringProp(rule.shape.props.path)
+				: '';
+		const normalizedPath = rawPath.trim();
+
+		// Keep rendering resilient: an empty SVG source should not break the glyph preview/export.
+		// Fallback to a rectangle cell until a valid SVG path/source is provided.
+		if (!normalizedPath) {
+			paths.push(...(await rectangle(box, {})));
+			return paths;
+		}
+
 		const props: SVGProps = {
-			url: calcStringProp(rule.shape.props.path),
+			url: normalizedPath,
 			negative: calcBooleanProp(rule.shape.props.negative)
 		};
 		paths.push(...(await svg(box, props)));

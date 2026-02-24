@@ -38,6 +38,13 @@
 		return fallback;
 	}
 
+	function readStringProp(prop: any, fallback: string): string {
+		if (!prop || !prop.value) return fallback;
+		if (prop.value.kind === ValueKind.Fixed) return prop.value.data ?? fallback;
+		if (prop.value.kind === ValueKind.Choice) return prop.value.data.options?.[0] ?? fallback;
+		return fallback;
+	}
+
 	function fmt(value: number): number {
 		return Number(value.toFixed(3));
 	}
@@ -85,6 +92,8 @@
 	$: squaring = readNumberProp(props?.squaring, 0.56);
 	$: negative = readBooleanProp(props?.negative, false);
 	$: orientation = readOrientationProp(props?.orientation, Orientation.NE);
+	$: svgSource = readStringProp(props?.path, '').trim();
+	$: hasSvgSource = svgSource.length > 0;
 	$: qPath = quarterPath(squaring, negative, orientation);
 	$: tPath = trianglePath(orientation);
 	$: transform = `translate(50 50) rotate(${rotation}) scale(${scaleX} ${scaleY}) translate(-50 -50)`;
@@ -112,8 +121,12 @@
 		{:else if kind === ShapeKind.Triangle}
 			<path d={tPath} />
 		{:else if kind === ShapeKind.SVG}
-			<rect x="10" y="10" width="80" height="80" fill="none" stroke="currentColor" stroke-width="10" />
-			<path d="M 20 70 L 40 40 L 58 58 L 80 30" fill="none" stroke="currentColor" stroke-width="10" />
+			{#if hasSvgSource}
+				<rect x="10" y="10" width="80" height="80" fill="none" stroke="currentColor" stroke-width="10" />
+				<path d="M 20 70 L 40 40 L 58 58 L 80 30" fill="none" stroke="currentColor" stroke-width="10" />
+			{:else}
+				<rect x="0" y="0" width="100" height="100" />
+			{/if}
 		{/if}
 	</g>
 </svg>

@@ -5,7 +5,7 @@
 
 <script lang="ts">
 	import { createEmptySyntax, createEmptyRule, type GlyphInput } from '$lib/types';
-	import type { Syntax, Rule } from '$lib/types';
+	import type { Syntax } from '$lib/types';
 	import { syntaxes, glyphs } from '$lib/stores';
 	import { nanoid } from 'nanoid';
 	import { getUniqueSymbolsFromGlyphs } from '$lib/GTL/structure';
@@ -25,30 +25,42 @@
 	 * Updating all the syntaxes if there are new symbols
 	 */
 
-	for (let syntax of $syntaxes) {
-		const uniqueSymbols = getUniqueSymbols($glyphs);
+	function updateSyntaxSymbols(syntax: Syntax, uniqueSymbols: Array<string>): boolean {
+		let changed = false;
+		const usedSymbols = new Set(uniqueSymbols);
 		const syntaxSymbols = syntax.rules.map((r) => r.symbol);
+
 		for (let symbol of uniqueSymbols) {
 			if (!syntaxSymbols.includes(symbol)) {
-				syntax.rules.push(createEmptyRule(symbol));
+				const newRule = createEmptyRule(symbol);
+				newRule.unused = false;
+				syntax.rules.push(newRule);
+				changed = true;
 			}
 		}
-		for (let symbol of syntaxSymbols) {
-			if (!uniqueSymbols.includes(symbol)) {
-				const extraRule = getRuleBySymbol(syntax, symbol);
-				const index = syntax.rules.indexOf(extraRule);
-				syntax.rules.splice(index, 1);
+
+		for (const rule of syntax.rules) {
+			const nextUnused = !usedSymbols.has(rule.symbol);
+			if ((rule.unused ?? false) !== nextUnused) {
+				rule.unused = nextUnused;
+				changed = true;
 			}
 		}
+
+		return changed;
 	}
 
-	function getRuleBySymbol(syntax: Syntax, s: string): Rule {
-		for (let rule of syntax.rules) {
-			if (rule.symbol == s) {
-				return rule;
+	$: {
+		const uniqueSymbols = getUniqueSymbols($glyphs);
+		let changed = false;
+		for (const syntax of $syntaxes) {
+			if (updateSyntaxSymbols(syntax, uniqueSymbols)) {
+				changed = true;
 			}
 		}
-		throw new Error('missingSymbol');
+		if (changed) {
+			$syntaxes = [...$syntaxes];
+		}
 	}
 
 	/**
@@ -80,10 +92,22 @@
 
 	let currentSyntaxIndex: number | undefined;
 	$: if (currentSyntax) currentSyntaxIndex = $syntaxes.indexOf(currentSyntax);
+	$: currentUnusedRulesCount = currentSyntax
+		? currentSyntax.rules.filter((rule) => rule.unused ?? false).length
+		: 0;
 
 	function handleDelete() {
 		$syntaxes = $syntaxes.filter((s) => s.id != $currentSyntaxId);
 		if ($syntaxes[0]) $currentSyntaxId = $syntaxes[0].id;
+	}
+
+	function cleanupUnusedRules() {
+		if (currentSyntaxIndex === undefined) return;
+		const syntax = $syntaxes[currentSyntaxIndex];
+		const nextRules = syntax.rules.filter((rule) => !(rule.unused ?? false));
+		if (nextRules.length === syntax.rules.length) return;
+		syntax.rules = nextRules;
+		$syntaxes = [...$syntaxes];
 	}
 </script>
 
@@ -123,6 +147,11 @@
 							<p class="text-small font-mono text-slate-900 mb-2 text-sm">Righe</p>
 							<InputNumber bind:value={$syntaxes[currentSyntaxIndex].grid.rows} />
 						</div>
+					</div>
+					<div class="flex gap-2 items-center">
+						<Button disabled={!currentUnusedRulesCount} on:click={cleanupUnusedRules}>
+							Pulisci simboli inutilizzati ({currentUnusedRulesCount})
+						</Button>
 					</div>
 					<DeleteButton on:delete={handleDelete} />
 				</div>

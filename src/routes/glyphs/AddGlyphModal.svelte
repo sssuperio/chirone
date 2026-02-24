@@ -5,6 +5,7 @@
 		isValidGlyphName,
 		normalizeGlyphNameInput
 	} from '$lib/GTL/glyphName';
+	import { inferGlyphSetIDByName } from '$lib/GTL/glyphSets';
 	import { parseGlyphStructure, resolveGlyphStructures } from '$lib/GTL/structure';
 	import { findCharInUnicodeList } from '$lib/GTL/unicode';
 	import { glyphs, selectedGlyph } from '$lib/stores';
@@ -111,7 +112,8 @@
 		const newGlyph: GlyphInput = {
 			id: nanoid(5),
 			name: normalizedGlyphName,
-			structure: autoStructure
+			structure: autoStructure,
+			set: inferGlyphSetIDByName(normalizedGlyphName)
 		};
 
 		$glyphs = [...$glyphs, newGlyph];

@@ -5,6 +5,7 @@ export interface GlyphComponentRef {
 	symbol: string;
 	x: number;
 	y: number;
+	rotation: number;
 }
 
 export interface ParsedGlyphStructure {
@@ -26,6 +27,8 @@ export interface ResolvedGlyphVisualData {
 const FRONTMATTER_SEPARATOR = '---';
 const SIMPLE_SCALAR_PATTERN = /^[A-Za-z0-9._-]+$/;
 const DEFAULT_COMPONENT_POSITION = 1;
+const COMPONENT_ROTATION_STEP = 15;
+const DEFAULT_COMPONENT_ROTATION = 0;
 const MAX_COMPONENT_DEPTH = 32;
 
 function normalizeLineEndings(value: string): string {
@@ -35,6 +38,13 @@ function normalizeLineEndings(value: string): string {
 function sanitizeComponentPosition(value: number | undefined): number {
 	if (!Number.isFinite(value)) return DEFAULT_COMPONENT_POSITION;
 	return Math.max(DEFAULT_COMPONENT_POSITION, Math.trunc(value as number));
+}
+
+function sanitizeComponentRotation(value: number | undefined): number {
+	if (!Number.isFinite(value)) return DEFAULT_COMPONENT_ROTATION;
+	const stepped = Math.round((value as number) / COMPONENT_ROTATION_STEP) * COMPONENT_ROTATION_STEP;
+	const normalized = ((stepped % 360) + 360) % 360;
+	return normalized === 360 ? 0 : normalized;
 }
 
 function sanitizeComponentSymbol(value: string | undefined): string {
@@ -55,7 +65,8 @@ function sanitizeComponentRef(partial: Partial<GlyphComponentRef>): GlyphCompone
 		name,
 		symbol: sanitizeComponentSymbol(partial.symbol),
 		x: sanitizeComponentPosition(partial.x),
-		y: sanitizeComponentPosition(partial.y)
+		y: sanitizeComponentPosition(partial.y),
+		rotation: sanitizeComponentRotation(partial.rotation)
 	};
 }
 
@@ -128,6 +139,7 @@ function parseFrontmatter(frontmatter: string | undefined): Array<GlyphComponent
 			if (inlineKey === 'symbol') current.symbol = inlineValue;
 			if (inlineKey === 'x') current.x = Number.parseInt(inlineValue, 10);
 			if (inlineKey === 'y') current.y = Number.parseInt(inlineValue, 10);
+			if (inlineKey === 'rotation') current.rotation = Number.parseInt(inlineValue, 10);
 			continue;
 		}
 
@@ -143,6 +155,7 @@ function parseFrontmatter(frontmatter: string | undefined): Array<GlyphComponent
 		if (key === 'symbol') current.symbol = parsedValue;
 		if (key === 'x') current.x = Number.parseInt(parsedValue, 10);
 		if (key === 'y') current.y = Number.parseInt(parsedValue, 10);
+		if (key === 'rotation') current.rotation = Number.parseInt(parsedValue, 10);
 	}
 
 	flushCurrent();
@@ -197,6 +210,7 @@ export function serializeGlyphStructure(parsed: ParsedGlyphStructure): string {
 		lines.push(`    symbol: ${formatScalar(component.symbol)}`);
 		lines.push(`    x: ${sanitizeComponentPosition(component.x)}`);
 		lines.push(`    y: ${sanitizeComponentPosition(component.y)}`);
+		lines.push(`    rotation: ${sanitizeComponentRotation(component.rotation)}`);
 	}
 	lines.push(FRONTMATTER_SEPARATOR);
 
@@ -270,6 +284,33 @@ function shouldApplySymbolOverride(options?: ResolveStructureOptions): boolean {
 	return options?.applySymbolOverride ?? true;
 }
 
+function rotateCellInComponent(
+	x: number,
+	y: number,
+	componentWidth: number,
+	componentHeight: number,
+	rotation: number
+): { x: number; y: number } {
+	const normalizedRotation = sanitizeComponentRotation(rotation);
+	if (!normalizedRotation) return { x, y };
+
+	const radians = (normalizedRotation * Math.PI) / 180;
+	const cos = Math.cos(radians);
+	const sin = Math.sin(radians);
+	const centerX = (Math.max(1, componentWidth) - 1) / 2;
+	const centerY = (Math.max(1, componentHeight) - 1) / 2;
+
+	const relativeX = x - centerX;
+	const relativeY = y - centerY;
+	const rotatedX = relativeX * cos - relativeY * sin + centerX;
+	const rotatedY = relativeX * sin + relativeY * cos + centerY;
+
+	return {
+		x: Math.round(rotatedX),
+		y: Math.round(rotatedY)
+	};
+}
+
 function applyComponent(
 	baseRows: Array<Array<string>>,
 	componentBody: string,
@@ -280,19 +321,24 @@ function applyComponent(
 	const matrix = baseRows.map((row) => [...row]);
 	const componentRows = splitRows(componentBody);
 	if (!componentRows.length) return matrix;
+	const componentHeight = componentRows.length;
+	const componentWidth = Math.max(0, ...componentRows.map((row) => row.length));
 
 	const offsetX = Math.max(0, sanitizeComponentPosition(component.x) - 1);
 	const offsetY = Math.max(0, sanitizeComponentPosition(component.y) - 1);
 	const overrideSymbol = sanitizeComponentSymbol(component.symbol);
+	const rotation = sanitizeComponentRotation(component.rotation);
 
 	for (let y = 0; y < componentRows.length; y++) {
 		for (let x = 0; x < componentRows[y].length; x++) {
 			const value = componentRows[y][x];
 			if (transparentSymbols.has(value)) continue;
 
+			const rotatedCell = rotateCellInComponent(x, y, componentWidth, componentHeight, rotation);
 			const nextValue = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
-			const targetRow = offsetY + y;
-			const targetCol = offsetX + x;
+			const targetRow = offsetY + rotatedCell.y;
+			const targetCol = offsetX + rotatedCell.x;
+			if (targetRow < 0 || targetCol < 0) continue;
 			ensureCell(matrix, targetRow, targetCol);
 			matrix[targetRow][targetCol] = nextValue;
 		}
@@ -316,20 +362,25 @@ function applyComponentWithMask(
 	if (!componentRows.length) {
 		return { rows: matrix, componentSources: sourceMatrix };
 	}
+	const componentHeight = componentRows.length;
+	const componentWidth = Math.max(0, ...componentRows.map((row) => row.length));
 
 	const offsetX = Math.max(0, sanitizeComponentPosition(component.x) - 1);
 	const offsetY = Math.max(0, sanitizeComponentPosition(component.y) - 1);
 	const overrideSymbol = sanitizeComponentSymbol(component.symbol);
 	const componentName = sanitizeComponentName(component.name);
+	const rotation = sanitizeComponentRotation(component.rotation);
 
 	for (let y = 0; y < componentRows.length; y++) {
 		for (let x = 0; x < componentRows[y].length; x++) {
 			const value = componentRows[y][x];
 			if (transparentSymbols.has(value)) continue;
 
+			const rotatedCell = rotateCellInComponent(x, y, componentWidth, componentHeight, rotation);
 			const nextValue = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
-			const targetRow = offsetY + y;
-			const targetCol = offsetX + x;
+			const targetRow = offsetY + rotatedCell.y;
+			const targetCol = offsetX + rotatedCell.x;
+			if (targetRow < 0 || targetCol < 0) continue;
 			ensureCell(matrix, targetRow, targetCol);
 			ensureComponentSourceCell(sourceMatrix, targetRow, targetCol);
 			matrix[targetRow][targetCol] = nextValue;

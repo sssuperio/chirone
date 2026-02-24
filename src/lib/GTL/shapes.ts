@@ -173,6 +173,8 @@ export type SVGProps = {
 	negative: boolean;
 };
 
+const invalidSvgWarnings = new Set<string>();
+
 function isLikelySvgMarkup(source: string): boolean {
 	return source.trimStart().startsWith('<svg');
 }
@@ -219,9 +221,12 @@ async function resolveSvgSource(rawUrl: string): Promise<string | undefined> {
 export const svg: Shape<SVGProps> = async (box, props) => {
 	const source = await resolveSvgSource(props.url);
 	if (!source) {
-		console.warn('[GTL svg] Ignored non-SVG source in rule', {
-			urlPreview: props.url?.slice(0, 80) ?? ''
-		});
+		const preview = props.url?.slice(0, 80) ?? '';
+		const warningKey = preview || '__empty__';
+		if (!invalidSvgWarnings.has(warningKey)) {
+			invalidSvgWarnings.add(warningKey);
+			console.warn('[GTL svg] Ignored non-SVG source in rule', { urlPreview: preview });
+		}
 		return [];
 	}
 

@@ -6,6 +6,7 @@
 	import { base } from '$app/paths';
 
 	import { collabStatus, initCollabSync } from '$lib/collab/client';
+	import { themeMode } from '$lib/stores';
 	import NavLink from '$lib/ui/navLink.svelte';
 
 	const links = [
@@ -17,11 +18,18 @@
 	];
 
 	onMount(() => {
+		document.documentElement.classList.remove('theme-dark');
 		const stop = initCollabSync();
 		return () => {
 			stop();
 		};
 	});
+
+	$: isDarkMode = $themeMode === 'dark';
+
+	function toggleThemeMode() {
+		themeMode.set(isDarkMode ? 'light' : 'dark');
+	}
 </script>
 
 <!--  -->
@@ -31,7 +39,17 @@
 			<NavLink href={l.href}>{l.text}</NavLink>
 		{/each}
 
-		<div class="ml-auto text-xs font-mono">
+		<div class="ml-auto flex items-center gap-3 text-xs font-mono">
+			<button
+				type="button"
+				on:click={toggleThemeMode}
+				class="px-2 py-1 border border-slate-500 text-slate-200 hover:bg-slate-700"
+				aria-label="Toggle night mode"
+				title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+			>
+				{isDarkMode ? 'Light' : 'Night'}
+			</button>
+
 			{#if $collabStatus.enabled}
 				<span
 					class:text-emerald-300={$collabStatus.state === 'connected'}

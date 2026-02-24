@@ -97,6 +97,7 @@ export const voidProps: VoidProps = {};
 export function createEmptyRule(s: string): Rule {
 	return {
 		symbol: s,
+		unused: false,
 		shape: {
 			kind: ShapeKind.Void,
 			props: {}

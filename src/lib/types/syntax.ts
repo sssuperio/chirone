@@ -7,6 +7,7 @@ import type { Shape } from './shapes';
 export type Rule = {
 	symbol: string;
 	shape: Shape;
+	unused?: boolean;
 };
 
 export type Syntax = {

@@ -11,8 +11,14 @@
 	import { ShapeKind, createEmptyRule } from '$lib/types';
 	import DeleteButton from '$lib/ui/deleteButton.svelte';
 	import AddGlyphModal from './AddGlyphModal.svelte';
+	import AddGlyphSetModal from './AddGlyphSetModal.svelte';
 	import { UNICODE } from '$lib/GTL/unicode';
 	import { resolveUnicodeNumber } from '$lib/GTL/glyphName';
+	import {
+		getGlyphSetByID,
+		getGlyphSetDefinitions,
+		inferGlyphSetID
+	} from '$lib/GTL/glyphSets';
 	import {
 		isComponentGlyphName,
 		parseGlyphStructure,
@@ -46,33 +52,27 @@
 		return Array.from(symbols);
 	}
 
-	function getRuleBySymbol(syntax: Syntax, s: string): Rule {
-		for (let rule of syntax.rules) {
-			if (rule.symbol == s) {
-				return rule;
-			}
-		}
-		throw new Error('missingSymbol');
-	}
-
 	function updateSyntaxSymbols(syntax: Syntax, symbols: Array<string>): boolean {
 		let changed = false;
+		const usedSymbols = new Set(symbols);
 
 		// Getting all symbols in syntax
 		const syntaxSymbols = syntax.rules.map((r) => r.symbol);
 		// Checking for additions
 		for (let symbol of symbols) {
 			if (!syntaxSymbols.includes(symbol)) {
-				syntax.rules.push(createEmptyRule(symbol));
+				const newRule = createEmptyRule(symbol);
+				newRule.unused = false;
+				syntax.rules.push(newRule);
 				changed = true;
 			}
 		}
-		// Removing if a symbol goes away
-		for (let symbol of syntaxSymbols) {
-			if (!symbols.includes(symbol)) {
-				const extraRule = getRuleBySymbol(syntax, symbol);
-				const index = syntax.rules.indexOf(extraRule);
-				syntax.rules.splice(index, 1);
+
+		// Keep rules, but mark whether they are currently unused in glyphs.
+		for (const rule of syntax.rules) {
+			const nextUnused = !usedSymbols.has(rule.symbol);
+			if ((rule.unused ?? false) !== nextUnused) {
+				rule.unused = nextUnused;
 				changed = true;
 			}
 		}
@@ -214,6 +214,22 @@
 		return resolvedGlyphStructuresVisualData.get(glyph.name)?.componentSources ?? [];
 	}
 
+	function structureHasDesignMarks(structure: string): boolean {
+		for (const char of Array.from(structure.replace(/\n/g, ''))) {
+			if (char !== ' ' && char !== '.') return true;
+		}
+		return false;
+	}
+
+	function isGlyphDesigned(glyph: GlyphInput): boolean {
+		const resolved = resolvedGlyphStructuresVisualData.get(glyph.name)?.body ?? getGlyphBody(glyph);
+		return structureHasDesignMarks(resolved);
+	}
+
+	function getGlyphSetID(glyph: GlyphInput) {
+		return inferGlyphSetID(glyph);
+	}
+
 	function getGlyphStructureTextareaValue(glyph: GlyphInput): string {
 		const parsed = parseGlyphStructure(glyph.structure);
 		if (!parsed.components.length) return glyph.structure;
@@ -279,6 +295,13 @@
 		return Array.from((value ?? '').trim())[0] ?? '';
 	}
 
+	function normalizeComponentRotationInput(value: number): number {
+		if (!Number.isFinite(value)) return 0;
+		const stepped = Math.round(value / 15) * 15;
+		const normalized = ((stepped % 360) + 360) % 360;
+		return normalized === 360 ? 0 : normalized;
+	}
+
 	function addComponentReference(targetGlyph: GlyphInput) {
 		if (!newComponentName || newComponentName === targetGlyph.name) return;
 
@@ -286,7 +309,8 @@
 			name: newComponentName,
 			symbol: normalizeComponentSymbolInput(newComponentSymbol),
 			x: Math.max(1, Math.trunc(newComponentX || 1)),
-			y: Math.max(1, Math.trunc(newComponentY || 1))
+			y: Math.max(1, Math.trunc(newComponentY || 1)),
+			rotation: normalizeComponentRotationInput(newComponentRotation)
 		};
 
 		targetGlyph.structure = replaceGlyphStructureComponents(targetGlyph.structure, [
@@ -322,7 +346,11 @@
 						? normalizeComponentSymbolInput(patch.symbol)
 						: component.symbol,
 				x: patch.x !== undefined ? Math.max(1, Math.trunc(patch.x || 1)) : component.x,
-				y: patch.y !== undefined ? Math.max(1, Math.trunc(patch.y || 1)) : component.y
+				y: patch.y !== undefined ? Math.max(1, Math.trunc(patch.y || 1)) : component.y,
+				rotation:
+					patch.rotation !== undefined
+						? normalizeComponentRotationInput(patch.rotation)
+						: component.rotation
 			};
 		});
 
@@ -333,6 +361,7 @@
 	//
 
 	let isAddGlyphModalOpen = false;
+	let isAddGlyphSetModalOpen = false;
 	let designTopRatio = 0.45;
 	let isResizingDesignPanels = false;
 	let designPanelsEl: HTMLDivElement | undefined;
@@ -340,11 +369,27 @@
 	let newComponentSymbol = '';
 	let newComponentX = 1;
 	let newComponentY = 1;
+	let newComponentRotation = 0;
+	let selectedGlyphSetFilter = 'all';
+	let showOnlyUndesignedGlyphs = false;
 
 	$: brushSymbols = getSyntaxSymbols($syntaxes);
 	$: rulesBySymbol = getRulesBySymbol($syntaxes);
 	$: voidFillSymbol = getVoidFillSymbol(rulesBySymbol);
 	$: fillTargetHeight = Math.max(1, Math.round($metrics.height || 1));
+	$: glyphSetDefinitions = getGlyphSetDefinitions();
+	$: filteredGlyphs = sortGlyphs($glyphs).filter((glyph) => {
+		if (selectedGlyphSetFilter !== 'all' && getGlyphSetID(glyph) !== selectedGlyphSetFilter) {
+			return false;
+		}
+		if (showOnlyUndesignedGlyphs && isGlyphDesigned(glyph)) {
+			return false;
+		}
+		return true;
+	});
+	$: if (filteredGlyphs.length && !filteredGlyphs.some((glyph) => glyph.id === $selectedGlyph)) {
+		$selectedGlyph = filteredGlyphs[0].id;
+	}
 	$: selectedGlyphData = $glyphs.find((glyph) => glyph.id === $selectedGlyph);
 	$: selectableComponentGlyphNames = selectedGlyphData
 		? getAvailableComponentGlyphs(selectedGlyphData.name).map((glyph) => glyph.name)
@@ -383,23 +428,60 @@
 	<div class="shrink-0 flex items-stretch">
 		<Sidebar>
 			<svelte:fragment slot="topArea">
-				<Button
-					on:click={() => {
-						isAddGlyphModalOpen = true;
-					}}>+ Aggiungi glifo</Button
-				>
+				<div class="space-y-2">
+					<div class="flex gap-2">
+						<Button
+							on:click={() => {
+								isAddGlyphModalOpen = true;
+							}}>+ Aggiungi glifo</Button
+						>
+						<Button
+							on:click={() => {
+								isAddGlyphSetModalOpen = true;
+							}}>+ Aggiungi set</Button
+						>
+					</div>
+
+					<div class="space-y-1 font-mono text-xs">
+						<p class="text-slate-600">Filtro set</p>
+						<select class="w-full h-9 bg-slate-200 px-2" bind:value={selectedGlyphSetFilter}>
+							<option value="all">Tutti i set</option>
+							{#each glyphSetDefinitions as definition (definition.id)}
+								<option value={definition.id}>{definition.label}</option>
+							{/each}
+						</select>
+					</div>
+
+					<label class="flex items-center gap-2 font-mono text-xs text-slate-700">
+						<input type="checkbox" bind:checked={showOnlyUndesignedGlyphs} />
+						<span>Mostra solo glifi vuoti</span>
+					</label>
+				</div>
 			</svelte:fragment>
 			<svelte:fragment slot="listTitle">Lista glifi</svelte:fragment>
 			<svelte:fragment slot="items">
-				{#each sortGlyphs($glyphs) as g (g.id)}
+				{#if filteredGlyphs.length === 0}
+					<p class="font-mono text-xs text-slate-500 px-2 py-1">
+						Nessun glifo nel filtro corrente.
+					</p>
+				{/if}
+				{#each filteredGlyphs as g (g.id)}
 					{@const glyphString = getGlyphString(g.name)}
+					{@const glyphSet = getGlyphSetByID(getGlyphSetID(g))}
+					{@const designed = isGlyphDesigned(g)}
 					<SidebarTile selection={selectedGlyph} id={g.id}>
-						{#if glyphString}
-							{glyphString}
-						{/if}
-						<span class="opacity-25">
-							– {g.name}
-						</span>
+						<div class="flex items-center justify-between gap-2">
+							<div class="min-w-0 truncate">
+								{#if glyphString}
+									{glyphString}
+								{/if}
+								<span class="opacity-25"> – {g.name}</span>
+								<span class="opacity-50"> [{glyphSet.label}]</span>
+							</div>
+							<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
+								{designed ? '●' : '○'}
+							</span>
+						</div>
 					</SidebarTile>
 				{/each}
 			</svelte:fragment>
@@ -509,6 +591,16 @@
 													bind:value={newComponentY}
 												/>
 											</div>
+											<div class="flex flex-col gap-1">
+												<label class="text-slate-500" for="component-rotation-input">rot°</label>
+												<input
+													id="component-rotation-input"
+													class="h-10 w-20 bg-slate-200 px-2"
+													type="number"
+													step="15"
+													bind:value={newComponentRotation}
+												/>
+											</div>
 											<Button on:click={() => addComponentReference(g)}>+ Aggiungi componente</Button>
 										</div>
 									{:else}
@@ -599,6 +691,30 @@
 																}}
 															/>
 														</label>
+														<label class="flex items-center gap-1">
+															<span>rot</span>
+															<input
+																class="w-16 h-7 border border-slate-300 px-1"
+																type="number"
+																step="15"
+																value={component.rotation}
+																on:input={(event) => {
+																	updateComponentReference(g, index, {
+																		rotation: inputNumericValue(event)
+																	});
+																}}
+																on:change={(event) => {
+																	updateComponentReference(g, index, {
+																		rotation: inputNumericValue(event)
+																	});
+																}}
+																on:blur={(event) => {
+																	updateComponentReference(g, index, {
+																		rotation: inputNumericValue(event)
+																	});
+																}}
+															/>
+														</label>
 													</div>
 													<button
 														type="button"
@@ -659,3 +775,4 @@
 <!--  -->
 
 <AddGlyphModal bind:open={isAddGlyphModalOpen} />
+<AddGlyphSetModal bind:open={isAddGlyphSetModalOpen} />
