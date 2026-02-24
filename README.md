@@ -14,8 +14,13 @@ pnpm run dev -- --open
 This repository includes a Go collaboration server that:
 
 - streams live project updates over SSE (`/api/events`)
-- accepts project writes (`PUT /api/project`)
-- dumps each project snapshot to one JSON file on every change
+- accepts versioned writes (`baseVersion`) and rejects stale updates with `409 Conflict`
+- supports per-entity realtime writes:
+  - glyph upsert/delete (`PUT/DELETE /api/glyph`)
+  - syntax upsert/delete (`PUT/DELETE /api/syntax`)
+  - metrics update (`PUT /api/metrics`)
+- keeps compatibility with full snapshot writes (`PUT /api/project`)
+- dumps both aggregate snapshots (`data/<project>.json`) and split entity files (`data/<project>/glyphs`, `data/<project>/syntaxes`, `data/<project>/metrics.json`)
 
 Start the server:
 
