@@ -115,11 +115,7 @@
 				<ellipse cx="50" cy="50" rx="50" ry="50" />
 			{/if}
 		{:else if kind === ShapeKind.Quarter}
-			{#if negative}
-				<path fill-rule="evenodd" d={`M 0 0 H 100 V 100 H 0 Z ${qPath}`} />
-			{:else}
-				<path d={qPath} />
-			{/if}
+			<path d={qPath} />
 		{:else if kind === ShapeKind.Triangle}
 			<path d={tPath} />
 		{:else if kind === ShapeKind.SVG}
