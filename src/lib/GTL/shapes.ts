@@ -11,12 +11,43 @@ export type TransformData = {
 	rotation: number;
 };
 
+const TRANSFORM_EPSILON = 1e-8;
+const CARDINAL_ROTATION_STEP = 90;
+const CARDINAL_ROTATION_EPSILON = 1e-7;
+
+function normalizeSignedZero(value: number): number {
+	return Object.is(value, -0) ? 0 : value;
+}
+
+function normalizeScale(value: number): number {
+	if (!Number.isFinite(value)) return 1;
+	if (Math.abs(value - 1) <= TRANSFORM_EPSILON) return 1;
+	if (Math.abs(value) <= TRANSFORM_EPSILON) return 0;
+	return normalizeSignedZero(value);
+}
+
+function normalizeRotation(value: number): number {
+	if (!Number.isFinite(value)) return 0;
+
+	const snappedCardinal =
+		Math.round(value / CARDINAL_ROTATION_STEP) * CARDINAL_ROTATION_STEP;
+	if (Math.abs(value - snappedCardinal) <= CARDINAL_ROTATION_EPSILON) {
+		return normalizeSignedZero(snappedCardinal);
+	}
+
+	return normalizeSignedZero(value);
+}
+
 export function calcTransform(props: BaseProps): TransformData {
 	return {
-		scale_x: calcNumberProp(props.scale_x),
-		scale_y: calcNumberProp(props.scale_y),
-		rotation: calcNumberProp(props.rotation)
+		scale_x: normalizeScale(calcNumberProp(props.scale_x)),
+		scale_y: normalizeScale(calcNumberProp(props.scale_y)),
+		rotation: normalizeRotation(calcNumberProp(props.rotation))
 	};
+}
+
+export function isIdentityTransform(data: TransformData): boolean {
+	return data.scale_x === 1 && data.scale_y === 1 && data.rotation === 0;
 }
 
 export function applyTransform(
@@ -24,17 +55,22 @@ export function applyTransform(
 	data: TransformData,
 	center = new paper.Point(0, 0)
 ) {
-	path.scale(data.scale_x, data.scale_y, center);
-	path.rotate(data.rotation, center);
+	if (isIdentityTransform(data)) {
+		return;
+	}
+
+	if (data.scale_x !== 1 || data.scale_y !== 1) {
+		path.scale(data.scale_x, data.scale_y, center);
+	}
+
+	if (data.rotation !== 0) {
+		path.rotate(data.rotation, center);
+	}
 }
 
 export function transform(path: paper.Path, props: BaseProps, center = new paper.Point(0, 0)) {
-	const scale_x = calcNumberProp(props.scale_x);
-	const scale_y = calcNumberProp(props.scale_y);
-	const rotation = calcNumberProp(props.rotation);
-
-	path.scale(scale_x, scale_y, center);
-	path.rotate(rotation, center);
+	const data = calcTransform(props);
+	applyTransform(path, data, center);
 }
 
 /* Shape drawing */
