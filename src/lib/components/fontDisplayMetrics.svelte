@@ -4,14 +4,13 @@
 	import { metrics } from '$lib/stores';
 	import { cellsToUnits, normalizeFontMetrics } from '$lib/GTL/metrics';
 
-export let font: opentype.Font;
-export let text: string;
-export let glyphName: string | undefined = undefined;
-export let canvasWidth = 520;
-export let canvasHeight = 260;
+	export let font: opentype.Font;
+	export let text: string;
+	export let glyphName: string | undefined = undefined;
+	export let canvasWidth = 520;
+	export let canvasHeight = 260;
 	export let showLegend = true;
 	export let responsive = true;
-	export let debug = false;
 
 	const colors = {
 		baseline: '#22c55e',
@@ -42,7 +41,7 @@ export let canvasHeight = 260;
 	};
 
 	let previewMetrics: PreviewMetrics | undefined;
-	let debugSnapshotUrl = '';
+	let previewSnapshotUrl = '';
 
 	function finite(value: unknown, fallback: number): number {
 		if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -149,7 +148,7 @@ export let canvasHeight = 260;
 		if (!canvas || !font) return;
 
 		try {
-			const width = Math.max(320, observedWidth);
+			const width = Math.max(120, observedWidth);
 			const height = Math.max(160, canvasHeight);
 			if (canvas.width !== width) {
 				canvas.width = width;
@@ -160,7 +159,9 @@ export let canvasHeight = 260;
 			const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
 			if (!ctx) return;
 			const char = text?.[0] || ' ';
-			const glyph = glyphName ? findGlyphByName(font, glyphName) ?? font.charToGlyph(char) : font.charToGlyph(char);
+			const glyph = glyphName
+				? findGlyphByName(font, glyphName) ?? font.charToGlyph(char)
+				: font.charToGlyph(char);
 			const m = buildPreviewMetrics(glyph);
 			previewMetrics = m;
 
@@ -172,26 +173,39 @@ export let canvasHeight = 260;
 			const padRight = 18;
 			const padTop = 18;
 			const padBottom = 40;
-			const previewHeight = height - padTop - padBottom;
+				const previewHeight = Math.max(48, height - padTop - padBottom);
 
-			const normalizedMetrics = normalizeFontMetrics($metrics);
-			const safeHeightMetric = Math.max(1, finite(normalizedMetrics.height, 5));
-			const safeDescenderMetric = Math.min(
-				safeHeightMetric - 1,
-				Math.max(0, finite(normalizedMetrics.descender, 1))
-			);
-			const ascenderCells = normalizedMetrics.ascender;
-			const fontSize = previewHeight;
-			const unit = fontSize / safeHeightMetric;
-			const baselineY = padTop + previewHeight - unit * safeDescenderMetric;
-			const ascenderY = baselineY - unit * ascenderCells;
-			const descenderY = baselineY + unit * safeDescenderMetric;
-			const capHeightY = baselineY - unit * normalizedMetrics.capHeight;
-			const xHeightY = baselineY - unit * normalizedMetrics.xHeight;
+				const normalizedMetrics = normalizeFontMetrics($metrics);
+				const bbox = glyph.getBoundingBox();
+				const ascenderUnits = finite(m.ascender, cellsToUnits(normalizedMetrics, normalizedMetrics.ascender));
+				const descenderUnits = finite(
+					m.descender,
+					-cellsToUnits(normalizedMetrics, normalizedMetrics.descender)
+				);
+				const capHeightUnits = finite(
+					m.capHeight,
+					cellsToUnits(normalizedMetrics, normalizedMetrics.capHeight)
+				);
+				const xHeightUnits = finite(
+					m.xHeight,
+					cellsToUnits(normalizedMetrics, normalizedMetrics.xHeight)
+				);
+				const bboxTopUnits = Number.isFinite(bbox.y2) ? bbox.y2 : ascenderUnits;
+				const bboxBottomUnits = Number.isFinite(bbox.y1) ? bbox.y1 : descenderUnits;
+				const topUnits = Math.max(ascenderUnits, bboxTopUnits);
+				const bottomUnits = Math.max(-descenderUnits, -bboxBottomUnits);
+				const verticalRangeUnits = Math.max(1, topUnits + bottomUnits);
+				const scale = previewHeight / verticalRangeUnits;
+				const fontSize = m.upm * scale;
+				const baselineY = padTop + topUnits * scale;
+				const ascenderY = baselineY - ascenderUnits * scale;
+				const descenderY = baselineY - descenderUnits * scale;
+				const capHeightY = baselineY - capHeightUnits * scale;
+				const xHeightY = baselineY - xHeightUnits * scale;
 
-			const scale = fontSize / m.upm;
-			const bbox = glyph.getBoundingBox();
-			const glyphWidthPx = Math.max(0, (Number.isFinite(bbox.x2) ? bbox.x2 : 0) - (Number.isFinite(bbox.x1) ? bbox.x1 : 0)) * scale;
+				const glyphWidthPx =
+					Math.max(0, (Number.isFinite(bbox.x2) ? bbox.x2 : 0) - (Number.isFinite(bbox.x1) ? bbox.x1 : 0)) *
+					scale;
 			const previewWidth = width - padLeft - padRight;
 			const centeredLeft = padLeft + Math.max(0, (previewWidth - glyphWidthPx) / 2);
 			const originX = centeredLeft - (Number.isFinite(bbox.x1) ? bbox.x1 : 0) * scale;
@@ -204,22 +218,8 @@ export let canvasHeight = 260;
 			const verticalToY = height - padBottom;
 
 			drawLine(ctx, ascenderY, colors.ascender, 'Ascender', padLeft, width - padRight);
-			drawLine(
-				ctx,
-				capHeightY,
-				colors.capHeight,
-				`Cap height`,
-				padLeft,
-				width - padRight
-			);
-			drawLine(
-				ctx,
-				xHeightY,
-				colors.xHeight,
-				`x-height`,
-				padLeft,
-				width - padRight
-			);
+			drawLine(ctx, capHeightY, colors.capHeight, 'Cap height', padLeft, width - padRight);
+			drawLine(ctx, xHeightY, colors.xHeight, 'x-height', padLeft, width - padRight);
 			drawLine(ctx, baselineY, colors.baseline, 'Baseline', padLeft, width - padRight);
 			drawLine(ctx, descenderY, colors.descender, 'Descender', padLeft, width - padRight);
 			drawVerticalLine(ctx, originX, colors.origin, 'Origin', verticalFromY, verticalToY);
@@ -227,35 +227,28 @@ export let canvasHeight = 260;
 			drawVerticalLine(ctx, rightBoundX, colors.rightBound, 'Right bound', verticalFromY, verticalToY);
 			drawVerticalLine(ctx, advanceX, colors.advance, 'Advance width', verticalFromY, verticalToY);
 
-			// Draw glyph on top of guides to keep it always visible.
 			ctx.save();
 			ctx.fillStyle = '#0f172a';
 			glyphPath.draw(ctx);
-			// Stroke fallback makes open contours visible as in a technical preview.
 			ctx.strokeStyle = '#020617';
 			ctx.lineWidth = 1.6;
 			drawGlyphPathStroke(ctx, glyphPath.commands);
 			ctx.stroke();
 			ctx.restore();
 
-			if (debug) {
-				debugSnapshotUrl = canvas.toDataURL('image/png');
-			} else {
-				debugSnapshotUrl = '';
-			}
-
+			previewSnapshotUrl = canvas.toDataURL('image/png');
 			renderError = '';
 		} catch (error) {
-			const width = Math.max(320, observedWidth);
+			const width = Math.max(120, observedWidth);
 			const height = Math.max(160, canvasHeight);
 			const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | null;
-				if (ctx) {
-					ctx.clearRect(0, 0, width, height);
-					ctx.fillStyle = '#f8fafc';
-					ctx.fillRect(0, 0, width, height);
-				}
-				debugSnapshotUrl = '';
-				renderError = error instanceof Error ? error.message : String(error);
+			if (ctx) {
+				ctx.clearRect(0, 0, width, height);
+				ctx.fillStyle = '#f8fafc';
+				ctx.fillRect(0, 0, width, height);
+			}
+			previewSnapshotUrl = '';
+			renderError = error instanceof Error ? error.message : String(error);
 			console.error('fontDisplayMetrics render error', error);
 		}
 	}
@@ -266,7 +259,7 @@ export let canvasHeight = 260;
 		const observer = new ResizeObserver((entries) => {
 			const entry = entries[0];
 			if (!entry) return;
-			observedWidth = Math.max(320, Math.floor(entry.contentRect.width));
+			observedWidth = Math.max(120, Math.floor(entry.contentRect.width));
 		});
 		observer.observe(container);
 		return () => {
@@ -274,7 +267,7 @@ export let canvasHeight = 260;
 		};
 	});
 
-	$: observedWidth = responsive ? Math.max(320, observedWidth) : canvasWidth;
+	$: observedWidth = responsive ? Math.max(120, observedWidth) : canvasWidth;
 	$: {
 		const canRender = Boolean(canvas && font && text !== undefined && observedWidth > 0 && canvasHeight > 0);
 		if (canRender) {
@@ -283,28 +276,28 @@ export let canvasHeight = 260;
 	}
 </script>
 
-<div bind:this={container} class="space-y-3">
-	<div class="relative">
+<div bind:this={container} class="space-y-3 w-full max-w-full min-w-0 overflow-x-hidden overflow-y-hidden">
+	<div class="relative w-full max-w-full min-w-0 overflow-hidden">
 		<canvas
 			bind:this={canvas}
-			class="block bg-slate-50 border border-slate-300 w-full"
-			class:opacity-0={debug && Boolean(debugSnapshotUrl)}
-			style={`height: ${canvasHeight}px; max-height: ${canvasHeight}px;`}
+			class="block bg-slate-50 border border-slate-300 w-full max-w-full"
+			class:opacity-0={Boolean(previewSnapshotUrl)}
+			style={`height: ${canvasHeight}px; max-height: ${canvasHeight}px; max-width: 100%;`}
 			width={observedWidth}
 			height={canvasHeight}
 		/>
-		{#if debug && debugSnapshotUrl}
+		{#if previewSnapshotUrl}
 			<img
-				class="absolute inset-0 w-full border border-slate-300 bg-white"
+				class="absolute inset-0 w-full border border-slate-300 bg-white pointer-events-none"
 				style={`height: ${canvasHeight}px; max-height: ${canvasHeight}px;`}
-				src={debugSnapshotUrl}
-				alt="Debug preview snapshot"
+				src={previewSnapshotUrl}
+				alt="Preview snapshot"
 			/>
 		{/if}
 	</div>
 
 	{#if previewMetrics}
-		<div class="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1 text-xs font-mono text-slate-700">
+		<div class="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1 text-xs font-mono text-slate-700 w-full max-w-full min-w-0 overflow-x-hidden">
 			<p>UPM: {previewMetrics.upm}</p>
 			<p>Ascender: {previewMetrics.ascender}</p>
 			<p>Descender: {previewMetrics.descender}</p>
@@ -321,7 +314,7 @@ export let canvasHeight = 260;
 	{/if}
 
 	{#if showLegend}
-		<div class="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs font-mono text-slate-600">
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs font-mono text-slate-600 w-full max-w-full min-w-0 overflow-x-hidden">
 			<p><span style={`color: ${colors.baseline}`}>●</span> verde: baseline (linea di scrittura)</p>
 			<p><span style={`color: ${colors.xHeight}`}>●</span> blu: x-height (altezza minuscole)</p>
 			<p><span style={`color: ${colors.capHeight}`}>●</span> viola: cap height (altezza maiuscole)</p>

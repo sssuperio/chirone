@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { GlyphInput, Rule, Syntax } from '$lib/types';
 	import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
 
@@ -365,6 +366,16 @@
 	let isAddGlyphModalOpen = false;
 	let isAddGlyphSetModalOpen = false;
 	let activeGlyphEditorTab: GlyphEditorTab = 'visualDesign';
+	let isZenMode = false;
+	let isDesignFullscreen = false;
+	let designWorkspaceElement: HTMLDivElement | undefined;
+	let floatingToolbarElement: HTMLDivElement | undefined;
+	let floatingToolbarX = 24;
+	let floatingToolbarY = 88;
+	let isFloatingToolbarDragging = false;
+	let floatingToolbarDragOffsetX = 0;
+	let floatingToolbarDragOffsetY = 0;
+	const previewCanvasHeight = 500;
 	let newComponentName = '';
 	let newComponentSymbol = '';
 	let newComponentX = 1;
@@ -397,76 +408,254 @@
 	$: if (!selectableComponentGlyphNames.includes(newComponentName)) {
 		newComponentName = selectableComponentGlyphNames[0] ?? '';
 	}
+	function isTypingTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tagName = target.tagName.toLowerCase();
+		if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+		return target.isContentEditable;
+	}
+
+	function setZenMode(nextValue: boolean) {
+		isZenMode = nextValue;
+		if (isZenMode) {
+			activeGlyphEditorTab = 'visualDesign';
+		}
+	}
+
+	function toggleZenMode() {
+		setZenMode(!isZenMode);
+	}
+
+	function clearSelectedGlyphDesign() {
+		if (!selectedGlyphData) return;
+		selectedGlyphData.structure = replaceGlyphStructureBody(selectedGlyphData.structure, '');
+		touchGlyphs();
+	}
+
+	function fillVoidSelectedGlyph() {
+		if (!selectedGlyphData) return;
+		selectedGlyphData.structure = fillVoidInStructure(
+			selectedGlyphData.structure,
+			voidFillSymbol,
+			fillTargetHeight
+		);
+		touchGlyphs();
+	}
+
+	function getFloatingToolbarSize(): { width: number; height: number } {
+		if (!floatingToolbarElement) {
+			return { width: 160, height: 220 };
+		}
+		const rect = floatingToolbarElement.getBoundingClientRect();
+		return {
+			width: Math.max(80, Math.round(rect.width)),
+			height: Math.max(80, Math.round(rect.height))
+		};
+	}
+
+	function clampFloatingToolbarPosition(x: number, y: number): { x: number; y: number } {
+		if (typeof window === 'undefined') {
+			return { x, y };
+		}
+		const margin = 8;
+		const { width, height } = getFloatingToolbarSize();
+		const maxX = Math.max(margin, window.innerWidth - width - margin);
+		const maxY = Math.max(margin, window.innerHeight - height - margin);
+		return {
+			x: Math.min(Math.max(margin, Math.round(x)), maxX),
+			y: Math.min(Math.max(margin, Math.round(y)), maxY)
+		};
+	}
+
+	function setFloatingToolbarPosition(x: number, y: number) {
+		const next = clampFloatingToolbarPosition(x, y);
+		floatingToolbarX = next.x;
+		floatingToolbarY = next.y;
+	}
+
+	function positionFloatingToolbarDefault() {
+		if (typeof window === 'undefined') return;
+		const { width } = getFloatingToolbarSize();
+		setFloatingToolbarPosition(window.innerWidth - width - 16, 96);
+	}
+
+	function startFloatingToolbarDrag(event: PointerEvent) {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		event.preventDefault();
+		isFloatingToolbarDragging = true;
+		floatingToolbarDragOffsetX = event.clientX - floatingToolbarX;
+		floatingToolbarDragOffsetY = event.clientY - floatingToolbarY;
+		event.currentTarget.setPointerCapture(event.pointerId);
+	}
+
+	function onFloatingToolbarPointerMove(event: PointerEvent) {
+		if (!isFloatingToolbarDragging) return;
+		setFloatingToolbarPosition(
+			event.clientX - floatingToolbarDragOffsetX,
+			event.clientY - floatingToolbarDragOffsetY
+		);
+	}
+
+	function stopFloatingToolbarDrag() {
+		isFloatingToolbarDragging = false;
+	}
+
+	function onFloatingToolbarResize() {
+		setFloatingToolbarPosition(floatingToolbarX, floatingToolbarY);
+	}
+
+	function syncDesignFullscreenState() {
+		if (typeof document === 'undefined') return;
+		isDesignFullscreen = document.fullscreenElement === designWorkspaceElement;
+	}
+
+	async function toggleDesignFullscreen() {
+		if (!designWorkspaceElement || typeof document === 'undefined') return;
+		try {
+			if (document.fullscreenElement === designWorkspaceElement) {
+				await document.exitFullscreen();
+				return;
+			}
+			await designWorkspaceElement.requestFullscreen();
+		} catch (error) {
+			console.error('Unable to toggle design fullscreen', error);
+		}
+	}
+
+	onMount(() => {
+		if (typeof document === 'undefined') return;
+
+		const onFullscreenChange = () => {
+			syncDesignFullscreenState();
+		};
+
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (isTypingTarget(event.target)) return;
+			if (event.repeat) return;
+
+			const key = event.key.toLowerCase();
+			const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+			if (plain && key === 'z') {
+				event.preventDefault();
+				toggleZenMode();
+				return;
+			}
+
+			if (plain && key === 'f') {
+				event.preventDefault();
+				void toggleDesignFullscreen();
+				return;
+			}
+
+			if (plain && key === 'v') {
+				event.preventDefault();
+				fillVoidSelectedGlyph();
+				return;
+			}
+
+			if (plain && key === 'c') {
+				event.preventDefault();
+				clearSelectedGlyphDesign();
+				return;
+			}
+
+			if (key === 'escape' && isZenMode) {
+				event.preventDefault();
+				setZenMode(false);
+			}
+		};
+
+		document.addEventListener('fullscreenchange', onFullscreenChange);
+		window.addEventListener('keydown', onKeyDown);
+		syncDesignFullscreenState();
+		requestAnimationFrame(() => {
+			positionFloatingToolbarDefault();
+		});
+
+		return () => {
+			document.removeEventListener('fullscreenchange', onFullscreenChange);
+			window.removeEventListener('keydown', onKeyDown);
+		};
+	});
 </script>
 
 <!--  -->
 
+<svelte:window
+	on:pointermove={onFloatingToolbarPointerMove}
+	on:pointerup={stopFloatingToolbarDrag}
+	on:pointercancel={stopFloatingToolbarDrag}
+	on:resize={onFloatingToolbarResize}
+/>
+
 <div class="flex flex-row flex-nowrap items-stretch overflow-hidden grow">
-	<div class="shrink-0 flex items-stretch">
-		<Sidebar>
-			<svelte:fragment slot="topArea">
-				<div class="space-y-2">
-					<div class="flex gap-2">
-						<Button
-							on:click={() => {
-								isAddGlyphModalOpen = true;
-							}}>+ Aggiungi glifo</Button
-						>
-						<Button
-							on:click={() => {
-								isAddGlyphSetModalOpen = true;
-							}}>+ Aggiungi set</Button
-						>
-					</div>
-
-					<div class="space-y-1 font-mono text-xs">
-						<p class="text-slate-600">Filtro set</p>
-						<select class="w-full h-9 bg-slate-200 px-2" bind:value={selectedGlyphSetFilter}>
-							<option value="all">Tutti i set</option>
-							{#each glyphSetDefinitions as definition (definition.id)}
-								<option value={definition.id}>{definition.label}</option>
-							{/each}
-						</select>
-					</div>
-
-					<label class="flex items-center gap-2 font-mono text-xs text-slate-700">
-						<input type="checkbox" bind:checked={showOnlyUndesignedGlyphs} />
-						<span>Mostra solo glifi vuoti</span>
-					</label>
-				</div>
-			</svelte:fragment>
-			<svelte:fragment slot="listTitle">Lista glifi</svelte:fragment>
-			<svelte:fragment slot="items">
-				{#if filteredGlyphs.length === 0}
-					<p class="font-mono text-xs text-slate-500 px-2 py-1">
-						Nessun glifo nel filtro corrente.
-					</p>
-				{/if}
-				{#each filteredGlyphs as g (g.id)}
-					{@const glyphString = getGlyphString(g.name)}
-					{@const glyphSet = getGlyphSetByID(getGlyphSetID(g))}
-					{@const designed = isGlyphDesigned(g)}
-					<SidebarTile selection={selectedGlyph} id={g.id}>
-						<div class="flex items-center justify-between gap-2">
-							<div class="min-w-0 truncate">
-								{#if glyphString}
-									{glyphString}
-								{/if}
-								<span class="opacity-25"> – {g.name}</span>
-								<span class="opacity-50"> [{glyphSet.label}]</span>
-							</div>
-							<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
-								{designed ? '●' : '○'}
-							</span>
+	{#if !isZenMode}
+		<div class="shrink-0 flex items-stretch">
+			<Sidebar>
+				<svelte:fragment slot="topArea">
+					<div class="space-y-2">
+						<div class="flex gap-2">
+							<Button
+								on:click={() => {
+									isAddGlyphModalOpen = true;
+								}}>+ Aggiungi glifo</Button
+							>
+							<Button
+								on:click={() => {
+									isAddGlyphSetModalOpen = true;
+								}}>+ Aggiungi set</Button
+							>
 						</div>
-					</SidebarTile>
-				{/each}
-			</svelte:fragment>
-		</Sidebar>
-	</div>
+
+						<div class="space-y-1 font-mono text-xs">
+							<p class="text-slate-600">Filtro set</p>
+							<select class="w-full h-9 bg-slate-200 px-2" bind:value={selectedGlyphSetFilter}>
+								<option value="all">Tutti i set</option>
+								{#each glyphSetDefinitions as definition (definition.id)}
+									<option value={definition.id}>{definition.label}</option>
+								{/each}
+							</select>
+						</div>
+
+						<label class="flex items-center gap-2 font-mono text-xs text-slate-700">
+							<input type="checkbox" bind:checked={showOnlyUndesignedGlyphs} />
+							<span>Mostra solo glifi vuoti</span>
+						</label>
+					</div>
+				</svelte:fragment>
+				<svelte:fragment slot="listTitle">Lista glifi</svelte:fragment>
+				<svelte:fragment slot="items">
+					{#if filteredGlyphs.length === 0}
+						<p class="font-mono text-xs text-slate-500 px-2 py-1">
+							Nessun glifo nel filtro corrente.
+						</p>
+					{/if}
+					{#each filteredGlyphs as g (g.id)}
+						{@const glyphString = getGlyphString(g.name)}
+						{@const glyphSet = getGlyphSetByID(getGlyphSetID(g))}
+						{@const designed = isGlyphDesigned(g)}
+						<SidebarTile selection={selectedGlyph} id={g.id}>
+							<div class="flex items-center justify-between gap-2">
+								<div class="min-w-0 truncate">
+									{#if glyphString}
+										{glyphString}
+									{/if}
+									<span class="opacity-25"> – {g.name}</span>
+									<span class="opacity-50"> [{glyphSet.label}]</span>
+								</div>
+								<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
+									{designed ? '●' : '○'}
+								</span>
+							</div>
+						</SidebarTile>
+					{/each}
+				</svelte:fragment>
+			</Sidebar>
+		</div>
+	{/if}
 
 	<!-- Glyph area -->
-	<div class="p-8 space-y-8 grow flex flex-col items-stretch">
+	<div class={`grow flex flex-col items-stretch ${isZenMode ? 'p-2 space-y-2' : 'p-8 space-y-8'}`}>
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
 				{@const glyphString = getGlyphString(g.name)}
@@ -475,32 +664,37 @@
 				{@const glyphComponents = getGlyphComponents(g)}
 				{@const resolvedGlyphBody = getResolvedGlyphBody(g)}
 				{@const resolvedGlyphComponentSources = getResolvedGlyphComponentSources(g)}
-				<div class="shrink-0 flex justify-between items-center">
-					<div class="flex gap-4">
-						{#if glyphString}
-							<div class="w-12 h-12 flex items-center justify-center border-black text-xl border">
-								<p>{glyphString}</p>
+					{#if !isZenMode}
+						<div class="shrink-0 flex justify-between items-center">
+							<div class="flex gap-4">
+								{#if glyphString}
+									<div class="w-12 h-12 flex items-center justify-center border-black text-xl border">
+										<p>{glyphString}</p>
+									</div>
+								{/if}
+								<div class="text-gray-400">
+									<p>{g.name}</p>
+									{#if glyphName}
+										<p>
+											{glyphName}
+										</p>
+									{/if}
+								</div>
 							</div>
-						{/if}
-						<div class="text-gray-400">
-							<p>{g.name}</p>
-							{#if glyphName}
-								<p>
-									{glyphName}
-								</p>
-							{/if}
+							<DeleteButton on:delete={handleDelete} />
 						</div>
-					</div>
-					<DeleteButton on:delete={handleDelete} />
-				</div>
-				<hr />
-					<div class="h-0 grow min-h-0 flex flex-col lg:flex-row gap-4">
-						<div class="min-h-0 flex-1 flex flex-col gap-2">
-							<div class="h-0 grow min-h-0 flex flex-col">
-								<div class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
-									<button
-										type="button"
-										class={`px-3 py-2 text-sm font-mono ${
+						<hr />
+					{/if}
+						<div
+							bind:this={designWorkspaceElement}
+							class={`h-0 grow min-h-0 flex gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
+						>
+								<div class="min-h-0 min-w-0 flex-1 flex flex-col gap-2">
+								<div class="h-0 grow min-h-0 flex flex-col">
+									<div class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
+										<button
+											type="button"
+											class={`px-3 py-2 text-sm font-mono ${
 											activeGlyphEditorTab === 'visualDesign'
 												? 'bg-slate-800 text-white'
 												: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
@@ -523,10 +717,10 @@
 										on:click={() => {
 											activeGlyphEditorTab = 'glyphStructure';
 										}}
-									>
-										Glyph structure
-									</button>
-								</div>
+										>
+											Glyph structure
+										</button>
+									</div>
 
 								{#if activeGlyphEditorTab === 'glyphStructure'}
 									<div class="h-0 grow min-h-0 flex flex-col">
@@ -763,18 +957,98 @@
 										</div>
 									</div>
 								{/if}
+								</div>
+							</div>
+
+								<div
+									class={`min-h-0 min-w-0 flex flex-col bg-slate-50 ${
+										isZenMode
+											? 'flex-[0_0_42%] border-l border-slate-300 pl-2'
+											: 'flex-1 lg:border-l lg:border-slate-300 lg:pl-4'
+									}`}
+								>
+								<p class="text-small font-mono text-slate-900 mb-2 text-sm">
+									Anteprima e metriche
+								</p>
+								<div class="h-0 grow min-h-0 overflow-y-auto overflow-x-hidden">
+									<GlyphPreview
+										canvasHeight={previewCanvasHeight}
+										showTitle={false}
+										showLegend={false}
+									/>
 							</div>
 						</div>
-
-					<div class="min-h-0 flex-1 flex flex-col lg:border-l lg:border-slate-300 lg:pl-4 bg-slate-50">
-						<p class="text-small font-mono text-slate-900 mb-2 text-sm">Anteprima e metriche</p>
-						<div class="h-0 grow min-h-0 overflow-y-auto">
-							<GlyphPreview canvasHeight={300} debug />
-						</div>
 					</div>
-				</div>
 				{/if}
-			{/each}
+				{/each}
+	</div>
+</div>
+
+<div
+	bind:this={floatingToolbarElement}
+	class={`fixed z-50 w-44 border border-slate-300 bg-white shadow-lg ${isFloatingToolbarDragging ? 'cursor-grabbing' : ''}`}
+	style={`left: ${floatingToolbarX}px; top: ${floatingToolbarY}px;`}
+>
+	<button
+		type="button"
+		class="h-8 px-2 border-b border-slate-300 bg-slate-900 text-white font-mono text-xs flex items-center justify-between cursor-grab select-none"
+		title="Trascina toolbar"
+		on:pointerdown={startFloatingToolbarDrag}
+	>
+		<span>Tools</span>
+		<span>::</span>
+	</button>
+	<div class="p-2 flex flex-col gap-1 bg-white">
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2"
+			title="Zen mode (Z)"
+			on:click={toggleZenMode}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>Z</span
+			>
+			<span>Zen mode</span>
+			<span class="ml-auto text-[10px] text-slate-500">Z</span>
+		</button>
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2"
+			title="Full screen (F)"
+			on:click={toggleDesignFullscreen}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>F</span
+			>
+			<span>{isDesignFullscreen ? 'Exit full screen' : 'Full screen'}</span>
+			<span class="ml-auto text-[10px] text-slate-500">F</span>
+		</button>
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			title="Fill void (V)"
+			on:click={fillVoidSelectedGlyph}
+			disabled={!selectedGlyphData}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>V</span
+			>
+			<span>Fill void</span>
+			<span class="ml-auto text-[10px] text-slate-500">V</span>
+		</button>
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			title="Pulisci (C)"
+			on:click={clearSelectedGlyphDesign}
+			disabled={!selectedGlyphData}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>C</span
+			>
+			<span>Pulisci</span>
+			<span class="ml-auto text-[10px] text-slate-500">C</span>
+		</button>
 	</div>
 </div>
 

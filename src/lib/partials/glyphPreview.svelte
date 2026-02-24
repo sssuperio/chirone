@@ -14,7 +14,6 @@
 	export let canvasWidth = 300;
 	export let canvasHeight = 150;
 	export let showLegend = true;
-	export let debug = false;
 
 	let currentGlyph: GlyphInput | undefined;
 	$: if ($selectedGlyph) currentGlyph = $glyphs.find((g) => g.id === $selectedGlyph);
@@ -64,7 +63,7 @@
 	}
 </script>
 
-<div class={compact ? 'space-y-3' : 'space-y-8'}>
+<div class={`${compact ? 'space-y-3' : 'space-y-8'} w-full max-w-full min-w-0 overflow-x-hidden`}>
 	{#if showTitle}
 		<p class="text-small font-mono text-slate-900 text-sm">{title}</p>
 	{/if}
@@ -76,20 +75,19 @@
 	{:else}
 		{#each $syntaxes as syntax, i}
 			<FontGenerator {syntax} glyphs={previewGlyphs} let:font>
-				{#if font}
-					<div class={compact ? 'space-y-1' : 'space-y-2'}>
+					{#if font}
+						<div class={`${compact ? 'space-y-1' : 'space-y-2'} w-full max-w-full min-w-0 overflow-x-hidden`}>
 						<p class="text-small font-mono text-slate-900 text-sm">
 							{font.names.fontSubfamily.en}
 						</p>
-							<FontDisplayMetrics
-								{canvasWidth}
-								{canvasHeight}
-								{font}
-								glyphName={currentGlyph.name}
-								text={currentGlyphText}
-								showLegend={showLegend && i === 0}
-								{debug}
-							/>
+								<FontDisplayMetrics
+									{canvasWidth}
+									{canvasHeight}
+									{font}
+									glyphName={currentGlyph.name}
+									text={currentGlyphText}
+									showLegend={showLegend && i === 0}
+								/>
 					</div>
 				{/if}
 			</FontGenerator>
