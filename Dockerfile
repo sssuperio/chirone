@@ -46,7 +46,8 @@ RUN mkdir -p /app/data && chown -R app:app /app
 
 USER app
 
-EXPOSE 8080
 VOLUME ["/app/data"]
 
-CMD ["/usr/local/bin/chirone-collab", "--addr", ":8080", "--data-dir", "/app/data", "--allow-origin", "*", "--ui-dir", "/app/ui"]
+ENV PORT=8080
+
+CMD ["sh", "-c", "exec /usr/local/bin/chirone-collab --addr :${PORT:-8080} --data-dir /app/data --allow-origin '*' --ui-dir /app/ui"]

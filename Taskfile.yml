@@ -81,13 +81,13 @@ tasks:
   docker:build:
     desc: Build Docker image (UI + collab server)
     cmds:
-      - docker build -t ${IMAGE:-chirone}:${TAG:-latest} .
+      - docker build --build-arg PUBLIC_BASE_PATH=${BUILD_PUBLIC_BASE_PATH:-} --build-arg VITE_COLLAB_SERVER=${BUILD_VITE_COLLAB_SERVER:-/} --build-arg VITE_COLLAB_PROJECT=${BUILD_VITE_COLLAB_PROJECT:-default} -t ${IMAGE:-chirone}:${TAG:-latest} .
 
   docker:run:
     desc: Run Docker image on localhost:8080 with persistent data volume
     deps: [docker:build]
     cmds:
-      - docker run --rm -p ${PORT:-8080}:8080 -v ${VOLUME:-chirone-data}:/app/data ${IMAGE:-chirone}:${TAG:-latest}
+      - docker run --rm -e PORT=${PORT:-8080} -p ${PORT:-8080}:${PORT:-8080} -v ${VOLUME:-chirone-data}:/app/data ${IMAGE:-chirone}:${TAG:-latest}
 
   docker:tag:ghcr:
     desc: Tag local image for GHCR

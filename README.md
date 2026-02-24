@@ -66,6 +66,25 @@ With Docker Compose:
 docker compose up --build
 ```
 
+Use a custom port:
+
+```bash
+PORT=8090 docker compose up --build
+```
+
+Build-time variables (for static frontend build):
+
+```bash
+BUILD_PUBLIC_BASE_PATH= \
+BUILD_VITE_COLLAB_SERVER=/ \
+BUILD_VITE_COLLAB_PROJECT=default \
+docker compose build
+```
+
+Runtime variables (container process):
+
+- `PORT` controls the collab server listen port inside the container (and published port in compose)
+
 ### Publish to GHCR
 
 ```bash
