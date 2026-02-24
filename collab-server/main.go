@@ -111,6 +111,12 @@ type projectResponse struct {
 	MetricsVersion int64            `json:"metricsVersion,omitempty"`
 }
 
+type projectVersionResponse struct {
+	Project   string `json:"project"`
+	Version   int64  `json:"version"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
 func (e *versionConflictError) Error() string {
 	return fmt.Sprintf(
 		"version conflict: baseVersion=%d currentVersion=%d",
@@ -1425,6 +1431,9 @@ func (s *server) writeCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Vary", "Origin")
 	w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,DELETE,OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Last-Event-ID")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
 
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -1513,6 +1522,45 @@ func (s *server) handleProject(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *server) handleProjectVersion(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	doc, ok, err := s.hub.getProject(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	resp := projectVersionResponse{
+		Project:   doc.Project,
+		Version:   doc.Version,
+		UpdatedAt: doc.UpdatedAt,
+	}
+	if resp.Project == "" {
+		resp.Project = projectID
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
@@ -1686,8 +1734,9 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	events := make(chan projectEvent, 32)
 	doc, exists, err := s.hub.subscribe(projectID, events)
@@ -1714,6 +1763,11 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 
+	if _, err := fmt.Fprintf(w, ": connected %d\n\n", time.Now().UnixNano()); err != nil {
+		return
+	}
+	flusher.Flush()
+
 	if exists {
 		if err := sendEvent(projectEvent{
 			Type:            "snapshot",
@@ -1723,7 +1777,7 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	ctx := r.Context()
@@ -1802,6 +1856,7 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/project", s.handleProject)
+	mux.HandleFunc("/api/project-version", s.handleProjectVersion)
 	mux.HandleFunc("/api/glyph", s.handleGlyph)
 	mux.HandleFunc("/api/syntax", s.handleSyntax)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)

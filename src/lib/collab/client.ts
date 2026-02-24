@@ -24,6 +24,12 @@ type ProjectResponse = ProjectDocument & {
 	metricsVersion?: number;
 };
 
+type ProjectVersionResponse = {
+	project: string;
+	version: number;
+	updatedAt: string;
+};
+
 type EntitySyncResponse = {
 	project: string;
 	entity: 'glyph' | 'syntax' | 'metrics';
@@ -210,6 +216,19 @@ function coerceProjectResponse(input: unknown): ProjectResponse | null {
 	};
 }
 
+function coerceProjectVersionResponse(input: unknown): ProjectVersionResponse | null {
+	if (!isObjectRecord(input)) return null;
+	if (typeof input.version !== 'number' || !Number.isFinite(input.version)) return null;
+	if (typeof input.updatedAt !== 'string') return null;
+	const project =
+		typeof input.project === 'string' ? sanitizeProjectID(input.project) : activeCollabProject;
+	return {
+		project,
+		version: Math.max(0, Math.trunc(input.version)),
+		updatedAt: input.updatedAt
+	};
+}
+
 function coerceEntitySyncResponse(input: unknown): EntitySyncResponse | null {
 	if (!isObjectRecord(input)) return null;
 	const entity = input.entity;
@@ -332,10 +351,11 @@ function stopRuntime() {
 function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const clientID = buildClientID();
 	const projectURL = `${serverBase}/api/project?project=${encodeURIComponent(projectID)}`;
+	const projectVersionURL = `${serverBase}/api/project-version?project=${encodeURIComponent(projectID)}`;
 	const glyphURL = `${serverBase}/api/glyph?project=${encodeURIComponent(projectID)}`;
 	const syntaxURL = `${serverBase}/api/syntax?project=${encodeURIComponent(projectID)}`;
 	const metricsURL = `${serverBase}/api/metrics?project=${encodeURIComponent(projectID)}`;
-	const eventsURL = `${serverBase}/api/events?project=${encodeURIComponent(projectID)}`;
+	const eventsURL = `${serverBase}/api/events?project=${encodeURIComponent(projectID)}&stream=${encodeURIComponent(clientID)}`;
 
 	let stopped = false;
 	let lastVersion = 0;
@@ -344,6 +364,8 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	let reconnectAttempts = 0;
 	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	let pushTimer: ReturnType<typeof setTimeout> | undefined;
+	let versionPollTimer: ReturnType<typeof setInterval> | undefined;
+	let nextVersionPollAt = 0;
 	let inFlightReload: Promise<boolean> | null = null;
 	let inFlightPush = false;
 	let pendingPush = false;
@@ -834,7 +856,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		inFlightReload = (async () => {
 			setStatus('connecting', `Reloading snapshot (${reason})...`);
 			try {
-				const response = await fetch(projectURL);
+				const response = await fetch(projectURL, { cache: 'no-store' });
 				if (!response.ok) {
 					throw new Error(`reload failed: ${response.status}`);
 				}
@@ -856,6 +878,28 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		})();
 
 		return inFlightReload;
+	};
+
+	const pollProjectVersion = async () => {
+		if (stopped || !localSyncReady) return;
+		const now = Date.now();
+		const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+		const minInterval = hidden ? 4000 : 1200;
+		if (now < nextVersionPollAt) return;
+		nextVersionPollAt = now + minInterval;
+
+		try {
+			const response = await fetch(projectVersionURL, { cache: 'no-store' });
+			if (response.status === 404 || !response.ok) return;
+			const payload = (await response.json()) as unknown;
+			const versionState = coerceProjectVersionResponse(payload);
+			if (!versionState) return;
+			if (versionState.version > lastVersion) {
+				void reloadProjectSnapshot(`version poll: v${lastVersion} -> v${versionState.version}`);
+			}
+		} catch {
+			// SSE path remains active; poll errors are intentionally ignored.
+		}
 	};
 
 	const flushPendingOps = async () => {
@@ -994,7 +1038,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		setStatus('connecting', `Loading project "${projectID}"...`);
 
 		try {
-			const response = await fetch(projectURL);
+			const response = await fetch(projectURL, { cache: 'no-store' });
 			if (response.status === 404) {
 				loadedRemote = false;
 			} else if (!response.ok) {
@@ -1024,6 +1068,10 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 
 		connectSSE();
+		versionPollTimer = setInterval(() => {
+			void pollProjectVersion();
+		}, 1000);
+		void pollProjectVersion();
 	};
 
 	void bootstrap();
@@ -1036,6 +1084,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 		if (pushTimer) clearTimeout(pushTimer);
 		if (reconnectTimer) clearTimeout(reconnectTimer);
+		if (versionPollTimer) clearInterval(versionPollTimer);
 		if (eventSource) {
 			eventSource.close();
 			eventSource = null;
