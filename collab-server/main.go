@@ -75,6 +75,7 @@ type versionConflictError struct {
 type entityConflictError struct {
 	ExpectedVersion int64
 	CurrentVersion  int64
+	ProjectVersion  int64
 	Entity          string
 	EntityID        string
 	EntityDeleted   bool
@@ -93,13 +94,14 @@ func (e *entityConflictError) Error() string {
 }
 
 type entityUpdateResponse struct {
-	Project   string          `json:"project"`
-	Entity    string          `json:"entity"`
-	EntityID  string          `json:"entityId,omitempty"`
-	Version   int64           `json:"version"`
-	Deleted   bool            `json:"deleted,omitempty"`
-	UpdatedAt string          `json:"updatedAt"`
-	Payload   json.RawMessage `json:"payload,omitempty"`
+	Project        string          `json:"project"`
+	Entity         string          `json:"entity"`
+	EntityID       string          `json:"entityId,omitempty"`
+	Version        int64           `json:"version"`
+	ProjectVersion int64           `json:"projectVersion,omitempty"`
+	Deleted        bool            `json:"deleted,omitempty"`
+	UpdatedAt      string          `json:"updatedAt"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
 }
 
 type projectResponse struct {
@@ -361,12 +363,12 @@ func (h *hub) projectMetricsFile(projectID string) string {
 	return filepath.Join(h.projectDir(projectID), "metrics.json")
 }
 
-func (h *hub) projectGlyphFile(projectID, glyphID string) string {
-	return filepath.Join(h.projectGlyphDir(projectID), fmt.Sprintf("%s.json", glyphID))
+func (h *hub) projectGlyphFile(projectID, filename string) string {
+	return filepath.Join(h.projectGlyphDir(projectID), filename)
 }
 
-func (h *hub) projectSyntaxFile(projectID, syntaxID string) string {
-	return filepath.Join(h.projectSyntaxDir(projectID), fmt.Sprintf("%s.json", syntaxID))
+func (h *hub) projectSyntaxFile(projectID, filename string) string {
+	return filepath.Join(h.projectSyntaxDir(projectID), filename)
 }
 
 func (h *hub) loadProjectFromDisk(projectID string) (*projectDocument, error) {
@@ -446,7 +448,7 @@ func writeJSONAtomic(target string, bytes []byte) error {
 	return os.Rename(temp, target)
 }
 
-func removeStaleEntityFiles(dir string, existing map[string]json.RawMessage) error {
+func removeStaleEntityFiles(dir string, expectedFiles map[string]struct{}) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -462,8 +464,7 @@ func removeStaleEntityFiles(dir string, existing map[string]json.RawMessage) err
 		if pathpkg.Ext(name) != ".json" {
 			continue
 		}
-		id := strings.TrimSuffix(name, ".json")
-		if _, ok := existing[id]; ok {
+		if _, ok := expectedFiles[name]; ok {
 			continue
 		}
 		if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -473,34 +474,112 @@ func removeStaleEntityFiles(dir string, existing map[string]json.RawMessage) err
 	return nil
 }
 
+func sanitizeEntityFilenameBase(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	var out strings.Builder
+	for _, r := range trimmed {
+		switch r {
+		case '/', '\\':
+			out.WriteRune('_')
+		default:
+			if r < 32 || r == 127 {
+				out.WriteRune('_')
+				continue
+			}
+			out.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(out.String())
+}
+
+func entityNameFromRaw(raw json.RawMessage) string {
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.Name)
+}
+
+func entityFileNamesByID(items map[string]json.RawMessage) map[string]string {
+	ids := make([]string, 0, len(items))
+	for id := range items {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	out := make(map[string]string, len(items))
+	used := map[string]struct{}{}
+	for _, id := range ids {
+		base := sanitizeEntityFilenameBase(entityNameFromRaw(items[id]))
+		if base == "" {
+			base = sanitizeEntityFilenameBase(id)
+		}
+		if base == "" {
+			base = "unnamed"
+		}
+
+		filename := fmt.Sprintf("%s.json", base)
+		if _, exists := used[filename]; exists {
+			suffix := sanitizeEntityFilenameBase(id)
+			if suffix == "" {
+				suffix = fmt.Sprintf("id-%d", len(used)+1)
+			}
+			filename = fmt.Sprintf("%s--%s.json", base, suffix)
+			for {
+				if _, stillExists := used[filename]; !stillExists {
+					break
+				}
+				filename = fmt.Sprintf("%s--%s-%d.json", base, suffix, len(used)+1)
+			}
+		}
+
+		out[id] = filename
+		used[filename] = struct{}{}
+	}
+	return out
+}
+
 func (h *hub) saveProjectStateToDisk(projectID string, state *projectState) error {
 	if err := h.saveProjectToDisk(state.Doc); err != nil {
 		return err
 	}
 
+	glyphFilesByID := entityFileNamesByID(state.Glyphs)
+	glyphExpectedFiles := make(map[string]struct{}, len(glyphFilesByID))
 	for id, glyphRaw := range state.Glyphs {
 		glyphBytes, err := json.MarshalIndent(json.RawMessage(glyphRaw), "", "  ")
 		if err != nil {
 			return err
 		}
-		if err := writeJSONAtomic(h.projectGlyphFile(projectID, id), glyphBytes); err != nil {
+		filename := glyphFilesByID[id]
+		glyphExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectGlyphFile(projectID, filename), glyphBytes); err != nil {
 			return err
 		}
 	}
-	if err := removeStaleEntityFiles(h.projectGlyphDir(projectID), state.Glyphs); err != nil {
+	if err := removeStaleEntityFiles(h.projectGlyphDir(projectID), glyphExpectedFiles); err != nil {
 		return err
 	}
 
+	syntaxFilesByID := entityFileNamesByID(state.Syntaxes)
+	syntaxExpectedFiles := make(map[string]struct{}, len(syntaxFilesByID))
 	for id, syntaxRaw := range state.Syntaxes {
 		syntaxBytes, err := json.MarshalIndent(json.RawMessage(syntaxRaw), "", "  ")
 		if err != nil {
 			return err
 		}
-		if err := writeJSONAtomic(h.projectSyntaxFile(projectID, id), syntaxBytes); err != nil {
+		filename := syntaxFilesByID[id]
+		syntaxExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectSyntaxFile(projectID, filename), syntaxBytes); err != nil {
 			return err
 		}
 	}
-	if err := removeStaleEntityFiles(h.projectSyntaxDir(projectID), state.Syntaxes); err != nil {
+	if err := removeStaleEntityFiles(h.projectSyntaxDir(projectID), syntaxExpectedFiles); err != nil {
 		return err
 	}
 
@@ -564,7 +643,16 @@ func publishProjectEvent(channels []chan projectEvent, event projectEvent) {
 		select {
 		case ch <- event:
 		default:
-			// Slow consumers are skipped; later updates carry fresh state.
+			// Channel is full; drop one stale queued event and try to enqueue the latest.
+			select {
+			case <-ch:
+			default:
+			}
+			select {
+			case ch <- event:
+			default:
+				// Still not writable (e.g. unbuffered/no receiver); skip this subscriber.
+			}
 		}
 	}
 }
@@ -904,6 +992,7 @@ func (h *hub) updateGlyph(projectID string, req updateGlyphRequest) (entityUpdat
 		return entityUpdateResponse{}, &entityConflictError{
 			ExpectedVersion: *req.BaseVersion,
 			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
 			Entity:          "glyph",
 			EntityID:        id,
 			EntityDeleted:   !hasGlyph,
@@ -944,12 +1033,13 @@ func (h *hub) updateGlyph(projectID string, req updateGlyphRequest) (entityUpdat
 	}
 
 	response = entityUpdateResponse{
-		Project:   projectID,
-		Entity:    "glyph",
-		EntityID:  id,
-		Version:   nextVersion,
-		UpdatedAt: state.Doc.UpdatedAt,
-		Payload:   cloneRawMessage(glyphRaw),
+		Project:        projectID,
+		Entity:         "glyph",
+		EntityID:       id,
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(glyphRaw),
 	}
 	h.mu.Unlock()
 
@@ -998,6 +1088,7 @@ func (h *hub) deleteGlyph(projectID string, req deleteGlyphRequest) (entityUpdat
 		return entityUpdateResponse{}, &entityConflictError{
 			ExpectedVersion: *req.BaseVersion,
 			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
 			Entity:          "glyph",
 			EntityID:        id,
 			EntityDeleted:   !hasGlyph,
@@ -1027,12 +1118,13 @@ func (h *hub) deleteGlyph(projectID string, req deleteGlyphRequest) (entityUpdat
 	}
 
 	response = entityUpdateResponse{
-		Project:   projectID,
-		Entity:    "glyph",
-		EntityID:  id,
-		Version:   currentVersion,
-		Deleted:   true,
-		UpdatedAt: state.Doc.UpdatedAt,
+		Project:        projectID,
+		Entity:         "glyph",
+		EntityID:       id,
+		Version:        currentVersion,
+		ProjectVersion: state.Doc.Version,
+		Deleted:        true,
+		UpdatedAt:      state.Doc.UpdatedAt,
 	}
 	h.mu.Unlock()
 
@@ -1081,6 +1173,7 @@ func (h *hub) updateSyntax(projectID string, req updateSyntaxRequest) (entityUpd
 		return entityUpdateResponse{}, &entityConflictError{
 			ExpectedVersion: *req.BaseVersion,
 			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
 			Entity:          "syntax",
 			EntityID:        id,
 			EntityDeleted:   !hasSyntax,
@@ -1121,12 +1214,13 @@ func (h *hub) updateSyntax(projectID string, req updateSyntaxRequest) (entityUpd
 	}
 
 	response = entityUpdateResponse{
-		Project:   projectID,
-		Entity:    "syntax",
-		EntityID:  id,
-		Version:   nextVersion,
-		UpdatedAt: state.Doc.UpdatedAt,
-		Payload:   cloneRawMessage(syntaxRaw),
+		Project:        projectID,
+		Entity:         "syntax",
+		EntityID:       id,
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(syntaxRaw),
 	}
 	h.mu.Unlock()
 
@@ -1175,6 +1269,7 @@ func (h *hub) deleteSyntax(projectID string, req deleteSyntaxRequest) (entityUpd
 		return entityUpdateResponse{}, &entityConflictError{
 			ExpectedVersion: *req.BaseVersion,
 			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
 			Entity:          "syntax",
 			EntityID:        id,
 			EntityDeleted:   !hasSyntax,
@@ -1204,12 +1299,13 @@ func (h *hub) deleteSyntax(projectID string, req deleteSyntaxRequest) (entityUpd
 	}
 
 	response = entityUpdateResponse{
-		Project:   projectID,
-		Entity:    "syntax",
-		EntityID:  id,
-		Version:   currentVersion,
-		Deleted:   true,
-		UpdatedAt: state.Doc.UpdatedAt,
+		Project:        projectID,
+		Entity:         "syntax",
+		EntityID:       id,
+		Version:        currentVersion,
+		ProjectVersion: state.Doc.Version,
+		Deleted:        true,
+		UpdatedAt:      state.Doc.UpdatedAt,
 	}
 	h.mu.Unlock()
 
@@ -1257,6 +1353,7 @@ func (h *hub) updateMetrics(projectID string, req updateMetricsRequest) (entityU
 		return entityUpdateResponse{}, &entityConflictError{
 			ExpectedVersion: *req.BaseVersion,
 			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
 			Entity:          "metrics",
 			EntityID:        "",
 			EntityDeleted:   false,
@@ -1291,11 +1388,12 @@ func (h *hub) updateMetrics(projectID string, req updateMetricsRequest) (entityU
 	}
 
 	response = entityUpdateResponse{
-		Project:   projectID,
-		Entity:    "metrics",
-		Version:   nextVersion,
-		UpdatedAt: state.Doc.UpdatedAt,
-		Payload:   cloneRawMessage(state.Metrics),
+		Project:        projectID,
+		Entity:         "metrics",
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(state.Metrics),
 	}
 	h.mu.Unlock()
 
@@ -1353,13 +1451,14 @@ func writeEntityConflict(w http.ResponseWriter, projectID string, conflictErr *e
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
 	_ = json.NewEncoder(w).Encode(entityUpdateResponse{
-		Project:   projectID,
-		Entity:    conflictErr.Entity,
-		EntityID:  conflictErr.EntityID,
-		Version:   conflictErr.CurrentVersion,
-		Deleted:   conflictErr.EntityDeleted,
-		UpdatedAt: conflictErr.UpdatedAt,
-		Payload:   conflictErr.Payload,
+		Project:        projectID,
+		Entity:         conflictErr.Entity,
+		EntityID:       conflictErr.EntityID,
+		Version:        conflictErr.CurrentVersion,
+		ProjectVersion: conflictErr.ProjectVersion,
+		Deleted:        conflictErr.EntityDeleted,
+		UpdatedAt:      conflictErr.UpdatedAt,
+		Payload:        conflictErr.Payload,
 	})
 }
 

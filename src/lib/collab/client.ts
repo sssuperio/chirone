@@ -29,6 +29,7 @@ type EntitySyncResponse = {
 	entity: 'glyph' | 'syntax' | 'metrics';
 	entityId?: string;
 	version: number;
+	projectVersion?: number;
 	deleted?: boolean;
 	updatedAt: string;
 	payload?: unknown;
@@ -54,20 +55,16 @@ type CollabStatus = {
 };
 
 const collabServer = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() ?? '';
-const collabProject = sanitizeProjectID(
+const collabProjectDefault = sanitizeProjectID(
 	(import.meta.env.VITE_COLLAB_PROJECT as string | undefined)?.trim() || 'default'
 );
 const collabEnabled = collabServer.length > 0;
+const collabServerBase = collabServer.replace(/\/+$/g, '');
+const collabProjectStorageKey = 'chirone-collab-project';
+let activeCollabProject = loadCollabProject(collabProjectDefault);
+let runtimeStop: (() => void) | null = null;
 
-const initialStatus: CollabStatus = {
-	enabled: collabEnabled,
-	state: collabEnabled ? 'connecting' : 'disabled',
-	project: collabProject,
-	version: 0,
-	message: collabEnabled
-		? 'Connecting to collaboration server...'
-		: 'Collaboration disabled (set VITE_COLLAB_SERVER)'
-};
+const initialStatus = buildInitialStatus(activeCollabProject);
 
 export const collabStatus = writable<CollabStatus>(initialStatus);
 
@@ -79,6 +76,38 @@ function sanitizeProjectID(raw: string): string {
 
 function isObjectRecord(input: unknown): input is Record<string, unknown> {
 	return typeof input === 'object' && input !== null;
+}
+
+function loadCollabProject(defaultProject: string): string {
+	if (typeof window === 'undefined') return defaultProject;
+	try {
+		const raw = window.localStorage.getItem(collabProjectStorageKey);
+		if (!raw) return defaultProject;
+		return sanitizeProjectID(raw.trim() || defaultProject);
+	} catch {
+		return defaultProject;
+	}
+}
+
+function persistCollabProject(project: string) {
+	if (typeof window === 'undefined') return;
+	try {
+		window.localStorage.setItem(collabProjectStorageKey, project);
+	} catch {
+		// Ignore storage failures; runtime project still changes in-memory.
+	}
+}
+
+function buildInitialStatus(project: string): CollabStatus {
+	return {
+		enabled: collabEnabled,
+		state: collabEnabled ? 'connecting' : 'disabled',
+		project,
+		version: 0,
+		message: collabEnabled
+			? 'Connecting to collaboration server...'
+			: 'Collaboration disabled (set VITE_COLLAB_SERVER)'
+	};
 }
 
 function stableStringify(input: unknown): string {
@@ -164,7 +193,8 @@ function coerceProjectResponse(input: unknown): ProjectResponse | null {
 
 	const version = typeof input.version === 'number' ? input.version : 0;
 	const updatedAt = typeof input.updatedAt === 'string' ? input.updatedAt : '';
-	const project = typeof input.project === 'string' ? sanitizeProjectID(input.project) : collabProject;
+	const project =
+		typeof input.project === 'string' ? sanitizeProjectID(input.project) : activeCollabProject;
 
 	return {
 		...snapshot,
@@ -190,12 +220,17 @@ function coerceEntitySyncResponse(input: unknown): EntitySyncResponse | null {
 
 	const entityId = typeof input.entityId === 'string' ? input.entityId : undefined;
 	const deleted = Boolean(input.deleted);
+	const projectVersion =
+		typeof input.projectVersion === 'number' && Number.isFinite(input.projectVersion)
+			? Math.max(0, Math.trunc(input.projectVersion))
+			: undefined;
 
 	return {
 		project: sanitizeProjectID(input.project),
 		entity,
 		entityId,
 		version: Math.max(0, Math.trunc(input.version)),
+		projectVersion,
 		deleted,
 		updatedAt: input.updatedAt,
 		payload: input.payload
@@ -245,21 +280,53 @@ function cloneMetrics(input: FontMetrics): FontMetrics {
 }
 
 export function initCollabSync(): () => void {
-	if (singletonStop) return singletonStop;
-	if (!collabEnabled) {
-		collabStatus.set(initialStatus);
+	if (!singletonStop) {
 		singletonStop = () => {
+			stopRuntime();
 			singletonStop = null;
 		};
-		return singletonStop;
 	}
 
-	const stop = startCollabRuntime(collabServer.replace(/\/+$/g, ''), collabProject);
-	singletonStop = () => {
-		stop();
-		singletonStop = null;
-	};
+	if (!runtimeStop) {
+		if (!collabEnabled) {
+			collabStatus.set(buildInitialStatus(activeCollabProject));
+		} else {
+			runtimeStop = startCollabRuntime(collabServerBase, activeCollabProject);
+		}
+	}
+
 	return singletonStop;
+}
+
+export function setCollabProject(nextProjectRaw: string): string {
+	const nextProject = sanitizeProjectID(nextProjectRaw.trim() || 'default');
+	if (nextProject === activeCollabProject) return nextProject;
+
+	activeCollabProject = nextProject;
+	persistCollabProject(activeCollabProject);
+
+	if (singletonStop) {
+		stopRuntime();
+		if (collabEnabled) {
+			runtimeStop = startCollabRuntime(collabServerBase, activeCollabProject);
+		} else {
+			collabStatus.set(buildInitialStatus(activeCollabProject));
+		}
+	} else {
+		collabStatus.update((status) => ({
+			...status,
+			project: activeCollabProject
+		}));
+	}
+
+	return nextProject;
+}
+
+function stopRuntime() {
+	if (!runtimeStop) return;
+	const stop = runtimeStop;
+	runtimeStop = null;
+	stop();
 }
 
 function startCollabRuntime(serverBase: string, projectID: string): () => void {
@@ -277,6 +344,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	let reconnectAttempts = 0;
 	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	let pushTimer: ReturnType<typeof setTimeout> | undefined;
+	let inFlightReload: Promise<boolean> | null = null;
 	let inFlightPush = false;
 	let pendingPush = false;
 	let eventSource: EventSource | null = null;
@@ -600,16 +668,19 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	};
 
 	const handleEntityConflictResponse = (response: EntitySyncResponse) => {
+		const globalVersion = response.projectVersion ?? lastVersion;
+		lastVersion = Math.max(lastVersion, globalVersion);
+
 		if (response.entity === 'glyph') {
 			const glyphID = response.entityId;
 			if (!glyphID) return;
 			if (response.deleted) {
-				applyRemoteGlyphDelete(glyphID, response.version, lastVersion);
+				applyRemoteGlyphDelete(glyphID, response.version, globalVersion);
 				glyphVersions.delete(glyphID);
 			} else {
 				const glyph = coerceGlyph(response.payload);
 				if (glyph) {
-					applyRemoteGlyphUpsert(glyph, response.version, lastVersion);
+					applyRemoteGlyphUpsert(glyph, response.version, globalVersion);
 				}
 			}
 			return;
@@ -619,12 +690,12 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			const syntaxID = response.entityId;
 			if (!syntaxID) return;
 			if (response.deleted) {
-				applyRemoteSyntaxDelete(syntaxID, response.version, lastVersion);
+				applyRemoteSyntaxDelete(syntaxID, response.version, globalVersion);
 				syntaxVersions.delete(syntaxID);
 			} else {
 				const syntax = coerceSyntax(response.payload);
 				if (syntax) {
-					applyRemoteSyntaxUpsert(syntax, response.version, lastVersion);
+					applyRemoteSyntaxUpsert(syntax, response.version, globalVersion);
 				}
 			}
 			return;
@@ -632,7 +703,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 
 		const nextMetrics = coerceMetrics(response.payload);
 		if (nextMetrics) {
-			applyRemoteMetricsUpdate(nextMetrics, response.version, lastVersion);
+			applyRemoteMetricsUpdate(nextMetrics, response.version, globalVersion);
 		}
 	};
 
@@ -725,6 +796,9 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			if (!ok) {
 				throw new Error('sync push failed: invalid response payload');
 			}
+			if (typeof ok.projectVersion === 'number') {
+				lastVersion = Math.max(lastVersion, ok.projectVersion);
+			}
 
 			if (ok.entity === 'glyph' && ok.entityId) {
 				if (ok.deleted) {
@@ -749,6 +823,39 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			scheduleReconnect();
 			return false;
 		}
+	};
+
+	const reloadProjectSnapshot = async (reason: string): Promise<boolean> => {
+		if (stopped) return false;
+		if (inFlightReload) {
+			return inFlightReload;
+		}
+
+		inFlightReload = (async () => {
+			setStatus('connecting', `Reloading snapshot (${reason})...`);
+			try {
+				const response = await fetch(projectURL);
+				if (!response.ok) {
+					throw new Error(`reload failed: ${response.status}`);
+				}
+				const payload = (await response.json()) as unknown;
+				const document = coerceProjectResponse(payload);
+				if (!document) {
+					throw new Error('reload failed: invalid response payload');
+				}
+				applyRemoteSnapshot(document, document.version, document);
+				setStatus('connected', `Reloaded snapshot (v${lastVersion})`);
+				return true;
+			} catch (error) {
+				setStatus('offline', error instanceof Error ? error.message : 'reload failed');
+				scheduleReconnect();
+				return false;
+			} finally {
+				inFlightReload = null;
+			}
+		})();
+
+		return inFlightReload;
 	};
 
 	const flushPendingOps = async () => {
@@ -832,6 +939,10 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 					return;
 				}
 				if (update.version > 0 && update.version <= lastVersion) return;
+				if (update.version > 0 && update.version > lastVersion + 1) {
+					void reloadProjectSnapshot(`stream gap: v${lastVersion} -> v${update.version}`);
+					return;
+				}
 
 				if (update.entity === 'glyph') {
 					if (!update.entityId) return;

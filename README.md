@@ -21,6 +21,8 @@ This repository includes a Go collaboration server that:
   - metrics update (`PUT /api/metrics`)
 - keeps compatibility with full snapshot writes (`PUT /api/project`)
 - dumps both aggregate snapshots (`data/<project>.json`) and split entity files (`data/<project>/glyphs`, `data/<project>/syntaxes`, `data/<project>/metrics.json`)
+  - split glyph/syntax filenames are based on entity `name` (for example `A.json`, `b.json`)
+  - if multiple entities share the same name, the server appends the id suffix to avoid overwrite
 
 Start the server:
 

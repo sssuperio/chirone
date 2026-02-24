@@ -39,7 +39,8 @@
 			triangle: triangleProps,
 			svg: svgProps
 		};
-		rule.shape.props = data[tempShape];
+		// Clone template props so each rule keeps independent mutable state.
+		rule.shape.props = JSON.parse(JSON.stringify(data[tempShape])) as Props;
 		rule.shape.kind = tempShape;
 	}
 
