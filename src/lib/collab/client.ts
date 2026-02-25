@@ -60,6 +60,10 @@ type CollabStatus = {
 	message: string;
 };
 
+type AppSHAResponse = {
+	sha: string;
+};
+
 const collabServer = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() ?? '';
 const collabProjectDefault = sanitizeProjectID(
 	(import.meta.env.VITE_COLLAB_PROJECT as string | undefined)?.trim() || 'default'
@@ -73,6 +77,7 @@ let runtimeStop: (() => void) | null = null;
 const initialStatus = buildInitialStatus(activeCollabProject);
 
 export const collabStatus = writable<CollabStatus>(initialStatus);
+export const collabServerSHA = writable<string>(collabEnabled ? 'loading' : 'n/a');
 
 let singletonStop: (() => void) | null = null;
 
@@ -306,13 +311,14 @@ export function initCollabSync(): () => void {
 		};
 	}
 
-	if (!runtimeStop) {
-		if (!collabEnabled) {
-			collabStatus.set(buildInitialStatus(activeCollabProject));
-		} else {
-			runtimeStop = startCollabRuntime(collabServerBase, activeCollabProject);
+		if (!runtimeStop) {
+			if (!collabEnabled) {
+				collabStatus.set(buildInitialStatus(activeCollabProject));
+				collabServerSHA.set('n/a');
+			} else {
+				runtimeStop = startCollabRuntime(collabServerBase, activeCollabProject);
+			}
 		}
-	}
 
 	return singletonStop;
 }
@@ -356,6 +362,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const syntaxURL = `${serverBase}/api/syntax?project=${encodeURIComponent(projectID)}`;
 	const metricsURL = `${serverBase}/api/metrics?project=${encodeURIComponent(projectID)}`;
 	const eventsURL = `${serverBase}/api/events?project=${encodeURIComponent(projectID)}&stream=${encodeURIComponent(clientID)}`;
+	const shaURL = `${serverBase}/api/version`;
 
 	let stopped = false;
 	let lastVersion = 0;
@@ -395,6 +402,29 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			version: lastVersion,
 			message
 		});
+	};
+
+	const coerceSHAResponse = (input: unknown): AppSHAResponse | null => {
+		if (!isObjectRecord(input)) return null;
+		if (typeof input.sha !== 'string') return null;
+		const sha = input.sha.trim();
+		if (!sha) return null;
+		return { sha };
+	};
+
+	const loadServerSHA = async () => {
+		try {
+			const response = await fetch(shaURL, { cache: 'no-store' });
+			if (!response.ok) {
+				collabServerSHA.set('unknown');
+				return;
+			}
+			const payload = (await response.json()) as unknown;
+			const parsed = coerceSHAResponse(payload);
+			collabServerSHA.set(parsed?.sha ?? 'unknown');
+		} catch {
+			collabServerSHA.set('unknown');
+		}
 	};
 
 	const ensureSelectedGlyph = (nextGlyphs: Array<GlyphInput>) => {
@@ -1036,6 +1066,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const bootstrap = async () => {
 		let loadedRemote = false;
 		setStatus('connecting', `Loading project "${projectID}"...`);
+		void loadServerSHA();
 
 		try {
 			const response = await fetch(projectURL, { cache: 'no-store' });

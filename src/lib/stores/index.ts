@@ -21,4 +21,3 @@ metrics.subscribe((current) => {
 export const selectedGlyph = writable('');
 export const previewText = writable('Hello World!');
 export const syntaxPreviewText = writable('hey');
-export const themeMode = persisted<'light' | 'dark'>('themeMode', 'light');

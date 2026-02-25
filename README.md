@@ -92,6 +92,11 @@ Runtime variables (container process):
 
 - `PORT` controls the collab server listen port inside the container (and published port in compose)
 
+SHA endpoint:
+
+- `GET /api/version` returns the current git SHA (`{"sha":"..."}`)
+- SHA is detected automatically from git metadata at build/runtime (no version build-arg required).
+
 ### Publish to GHCR
 
 ```bash

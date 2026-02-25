@@ -26,10 +26,14 @@ RUN pnpm run build
 
 FROM golang:1.22-alpine AS collab-builder
 
-WORKDIR /src/collab-server
+WORKDIR /src
 
-COPY collab-server/go.mod ./
-COPY collab-server/main.go ./
+RUN apk add --no-cache git
+
+COPY .git ./.git
+COPY collab-server ./collab-server
+
+WORKDIR /src/collab-server
 
 RUN go build -o /out/chirone-collab .
 

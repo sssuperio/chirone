@@ -9,9 +9,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	pathpkg "path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -115,6 +117,10 @@ type projectVersionResponse struct {
 	Project   string `json:"project"`
 	Version   int64  `json:"version"`
 	UpdatedAt string `json:"updatedAt"`
+}
+
+type appSHAResponse struct {
+	SHA string `json:"sha"`
 }
 
 func (e *versionConflictError) Error() string {
@@ -1419,6 +1425,64 @@ type server struct {
 	hub         *hub
 	allowOrigin string
 	uiDir       string
+	appSHA      string
+}
+
+func resolveGitSHA() string {
+	if sha := resolveGitSHAFromBuildInfo(); sha != "" {
+		return sha
+	}
+	if sha := resolveGitSHAFromGit(); sha != "" {
+		return sha
+	}
+	return "unknown"
+}
+
+func resolveGitSHAFromBuildInfo() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+
+	sha := ""
+	dirty := false
+	for _, setting := range buildInfo.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			sha = strings.TrimSpace(setting.Value)
+		case "vcs.modified":
+			dirty = setting.Value == "true"
+		}
+	}
+
+	if sha == "" {
+		return ""
+	}
+	if len(sha) > 12 {
+		sha = sha[:12]
+	}
+	if dirty {
+		sha += "-dirty"
+	}
+	return sha
+}
+
+func resolveGitSHAFromGit() string {
+	shaBytes, err := exec.Command("git", "rev-parse", "--short=12", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	sha := strings.TrimSpace(string(shaBytes))
+	if sha == "" {
+		return ""
+	}
+
+	statusBytes, err := exec.Command("git", "status", "--porcelain").Output()
+	if err == nil && strings.TrimSpace(string(statusBytes)) != "" {
+		sha += "-dirty"
+	}
+
+	return sha
 }
 
 func (s *server) writeCORS(w http.ResponseWriter, r *http.Request) {
@@ -1447,7 +1511,24 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status": "ok",
+		"sha":    s.appSHA,
+	})
+}
+
+func (s *server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(appSHAResponse{SHA: s.appSHA})
 }
 
 func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) error {
@@ -1855,6 +1936,7 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/project", s.handleProject)
 	mux.HandleFunc("/api/project-version", s.handleProjectVersion)
 	mux.HandleFunc("/api/glyph", s.handleGlyph)
@@ -1876,7 +1958,7 @@ func (s *server) routes() http.Handler {
 				return
 			}
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte("chirone collab server\n"))
+			_, _ = w.Write([]byte(fmt.Sprintf("chirone collab server (%s)\n", s.appSHA)))
 		})
 	}
 
@@ -1896,6 +1978,7 @@ func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
 		hub:         newHub(dataDir),
 		allowOrigin: allowOrigin,
 		uiDir:       strings.TrimSpace(uiDir),
+		appSHA:      resolveGitSHA(),
 	}
 
 	httpServer := &http.Server{
