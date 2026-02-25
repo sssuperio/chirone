@@ -28,9 +28,6 @@ FROM golang:1.22-alpine AS collab-builder
 
 WORKDIR /src
 
-RUN apk add --no-cache git
-
-COPY .git ./.git
 COPY collab-server ./collab-server
 
 WORKDIR /src/collab-server
