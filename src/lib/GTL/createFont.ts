@@ -14,6 +14,8 @@ import paper from 'paper';
 import opentype from 'opentype.js';
 import type { FontMetrics } from './metrics';
 import { cellsToUnits, normalizeFontMetrics, unitsPerCell } from './metrics';
+import type { FontMetadata } from './metadata';
+import { normalizeFontMetadata } from './metadata';
 import {
 	getAlternateBaseName,
 	getLigatureComponentNames,
@@ -124,15 +126,39 @@ export async function generateGlyph(
 
 export type FontMetricsKeys = keyof FontMetrics;
 export type { FontMetrics };
+export type { FontMetadata };
+
+function toPostScriptName(value: string): string {
+	const normalized = value
+		.normalize('NFKD')
+		.replace(/[^\x20-\x7E]/g, '')
+		.replace(/\s+/g, '')
+		.replace(/[^a-zA-Z0-9-]/g, '');
+	return normalized || 'GTL-Regular';
+}
+
+function isoDateToUnixTimestamp(dateValue: string): number | undefined {
+	const [yearString, monthString, dayString] = dateValue.split('-');
+	const year = Number(yearString);
+	const month = Number(monthString);
+	const day = Number(dayString);
+	if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return undefined;
+	if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+	const utcMillis = Date.UTC(year, month - 1, day);
+	if (!Number.isFinite(utcMillis)) return undefined;
+	return Math.floor(utcMillis / 1000);
+}
 
 //
 
 export async function generateFont(
 	syntax: Syntax,
 	glyphs: Array<GlyphInput>,
-	metrics: FontMetrics
+	metrics: FontMetrics,
+	metadata?: FontMetadata
 ): Promise<opentype.Font> {
 	const normalizedMetrics = normalizeFontMetrics(metrics as any);
+	const normalizedMetadata = normalizeFontMetadata(metadata as any);
 	const baseSquare = unitsPerCell(normalizedMetrics);
 	const ascenderUnits = cellsToUnits(normalizedMetrics, normalizedMetrics.ascender);
 	const descenderUnits = -cellsToUnits(normalizedMetrics, normalizedMetrics.descender);
@@ -197,14 +223,31 @@ export async function generateFont(
 	}
 
 	// Creating font
-	const font = new opentype.Font({
-		familyName: 'GTL',
-		styleName: syntax.name,
+	const familyName = normalizedMetadata.familyName || 'GTL';
+	const styleName = syntax.name?.trim() || 'Regular';
+	const fullName = normalizedMetadata.name || `${familyName} ${styleName}`.trim();
+	const createdTimestamp = isoDateToUnixTimestamp(normalizedMetadata.createdDate);
+	const fontOptions: any = {
+		familyName,
+		styleName,
+		fullName,
+		postScriptName: toPostScriptName(`${familyName}-${styleName}`),
 		unitsPerEm: normalizedMetrics.UPM,
 		ascender: ascenderUnits,
 		descender: descenderUnits,
 		glyphs: opentypeGlyphs
-	});
+	};
+	if (normalizedMetadata.designer) fontOptions.designer = normalizedMetadata.designer;
+	if (normalizedMetadata.designerURL) fontOptions.designerURL = normalizedMetadata.designerURL;
+	if (normalizedMetadata.manufacturer) fontOptions.manufacturer = normalizedMetadata.manufacturer;
+	if (normalizedMetadata.manufacturerURL) {
+		fontOptions.manufacturerURL = normalizedMetadata.manufacturerURL;
+	}
+	if (normalizedMetadata.license) fontOptions.license = normalizedMetadata.license;
+	if (normalizedMetadata.version) fontOptions.version = normalizedMetadata.version;
+	if (createdTimestamp !== undefined) fontOptions.createdTimestamp = createdTimestamp;
+
+	const font = new opentype.Font(fontOptions);
 
 	const os2 = ((font.tables as any).os2 = (font.tables as any).os2 || {});
 	os2.sTypoAscender = ascenderUnits;

@@ -2,12 +2,14 @@
 	import { generateFont } from '$lib/GTL/createFont';
 	import { metrics } from '$lib/stores';
 	import type { GlyphInput, Syntax } from '$lib/types';
+	import type { FontMetadata } from '$lib/GTL/metadata';
 
 	export let syntax: Syntax;
 	export let glyphs: Array<GlyphInput>;
+	export let metadata: FontMetadata | undefined = undefined;
 
 	let fontPromise: Promise<opentype.Font>;
-	$: fontPromise = generateFont(syntax, glyphs, $metrics);
+	$: fontPromise = generateFont(syntax, glyphs, $metrics, metadata);
 </script>
 
 {#await fontPromise}

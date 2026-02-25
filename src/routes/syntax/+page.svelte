@@ -4,18 +4,21 @@
 </script>
 
 <script lang="ts">
-	import { createEmptySyntax, createEmptyRule, type GlyphInput } from '$lib/types';
+	import { createEmptySyntax, createEmptyRule, ShapeKind, type GlyphInput } from '$lib/types';
 	import type { Syntax } from '$lib/types';
 	import { syntaxes, glyphs } from '$lib/stores';
 	import { nanoid } from 'nanoid';
-	import { getUniqueSymbolsFromGlyphs } from '$lib/GTL/structure';
+	import {
+		getUniqueSymbolsFromGlyphs,
+		parseGlyphStructure,
+		replaceGlyphStructureBody
+	} from '$lib/GTL/structure';
 
 	import SyntaxEditor from '$lib/components/syntax/syntaxEditor.svelte';
 	import InputText from '$lib/ui/inputText.svelte';
 	import Sidebar from '$lib/ui/sidebar.svelte';
 	import SidebarTile from '$lib/ui/sidebarTile.svelte';
 	import Button from '$lib/ui/button.svelte';
-	import SyntaxPreview from '$lib/partials/syntaxPreview.svelte';
 	import DeleteButton from '$lib/ui/deleteButton.svelte';
 	import InputNumber from '$lib/ui/inputNumber.svelte';
 
@@ -116,6 +119,52 @@
 			$glyphs = [...$glyphs];
 		}
 	}
+
+	function getVoidFillSymbolForSyntax(syntax: Syntax): string {
+		for (const rule of syntax.rules) {
+			if (rule.shape.kind !== ShapeKind.Void) continue;
+			if (!rule.symbol) continue;
+			if (rule.symbol === ' ') continue;
+			return rule.symbol;
+		}
+		return '.';
+	}
+
+	function fillVoidAllGlyphsForCurrentStyle() {
+		if (currentSyntaxIndex === undefined) return;
+		const syntax = $syntaxes[currentSyntaxIndex];
+		const fillSymbol = getVoidFillSymbolForSyntax(syntax);
+		const targetHeight = Math.max(1, Math.trunc(syntax.grid.rows || 1));
+		let changed = false;
+
+		for (const glyph of $glyphs) {
+			const parsed = parseGlyphStructure(glyph.structure);
+			const sourceRows = parsed.body ? parsed.body.split(/\r?\n/) : [];
+			const width = Math.max(1, ...sourceRows.map((row) => row.length));
+			const height = Math.max(1, targetHeight, sourceRows.length);
+			const rows = Array.from({ length: height }, (_, index) => sourceRows[index] ?? '');
+
+			const nextBody = rows
+				.map((row) =>
+					row
+						.padEnd(width, ' ')
+						.split('')
+						.map((char) => (char === ' ' ? fillSymbol : char))
+						.join('')
+				)
+				.join('\n');
+
+			const nextStructure = replaceGlyphStructureBody(glyph.structure, nextBody);
+			if (nextStructure !== glyph.structure) {
+				glyph.structure = nextStructure;
+				changed = true;
+			}
+		}
+
+		if (changed) {
+			$glyphs = [...$glyphs];
+		}
+	}
 </script>
 
 <!--  -->
@@ -137,7 +186,7 @@
 	</Sidebar>
 
 	<!-- syntax editor -->
-	<div class="p-8 space-y-8 overflow-y-auto">
+	<div class="grow min-w-0 p-8 space-y-8 overflow-y-auto">
 		{#key currentSyntaxIndex}
 			{#if currentSyntaxIndex !== undefined}
 				<div class="space-y-4">
@@ -145,37 +194,32 @@
 						<p class="text-small font-mono text-slate-900 mb-2 text-sm">Nome stile</p>
 						<InputText name="styleName" bind:value={$syntaxes[currentSyntaxIndex].name} />
 					</div>
-					<div class="flex gap-4">
-						<div>
-							<p class="text-small font-mono text-slate-900 mb-2 text-sm">Colonne</p>
-							<InputNumber bind:value={$syntaxes[currentSyntaxIndex].grid.columns} />
+						<div class="flex gap-4">
+							<div>
+								<p class="text-small font-mono text-slate-900 mb-2 text-sm">Colonne</p>
+								<InputNumber bind:value={$syntaxes[currentSyntaxIndex].grid.columns} />
+							</div>
+							<div>
+								<p class="text-small font-mono text-slate-900 mb-2 text-sm">Righe</p>
+								<InputNumber bind:value={$syntaxes[currentSyntaxIndex].grid.rows} />
+							</div>
 						</div>
-						<div>
-							<p class="text-small font-mono text-slate-900 mb-2 text-sm">Righe</p>
-							<InputNumber bind:value={$syntaxes[currentSyntaxIndex].grid.rows} />
+						<div class="flex gap-2 items-center">
+							<Button disabled={!currentUnusedRulesCount} on:click={cleanupUnusedRules}>
+								Pulisci simboli inutilizzati ({currentUnusedRulesCount})
+							</Button>
+							<Button on:click={fillVoidAllGlyphsForCurrentStyle}>
+								Fill void su tutti i glifi
+							</Button>
 						</div>
+						<DeleteButton on:delete={handleDelete} />
 					</div>
-					<div class="flex gap-2 items-center">
-						<Button disabled={!currentUnusedRulesCount} on:click={cleanupUnusedRules}>
-							Pulisci simboli inutilizzati ({currentUnusedRulesCount})
-						</Button>
-					</div>
-					<DeleteButton on:delete={handleDelete} />
-				</div>
 				<hr />
-					<SyntaxEditor
-						bind:syntax={$syntaxes[currentSyntaxIndex]}
-						glyphs={$glyphs}
-						on:changed={handleSyntaxEditorChanged}
-					/>
-				{/if}
-			{/key}
-		</div>
-
-	<div class="p-8 border border-l-gray-300 overflow-y-scroll">
-		{#key currentSyntaxIndex}
-			{#if currentSyntaxIndex !== undefined}
-				<SyntaxPreview syntax={$syntaxes[currentSyntaxIndex]} />
+				<SyntaxEditor
+					bind:syntax={$syntaxes[currentSyntaxIndex]}
+					glyphs={$glyphs}
+					on:changed={handleSyntaxEditorChanged}
+				/>
 			{/if}
 		{/key}
 	</div>

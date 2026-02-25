@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { syntaxes, metrics, glyphs, selectedGlyph, defaultMetrics } from '$lib/stores';
+	import {
+		syntaxes,
+		metrics,
+		glyphs,
+		selectedGlyph,
+		defaultMetrics,
+		fontMetadata,
+		defaultMetadata
+	} from '$lib/stores';
 	import { collabStatus, setCollabProject } from '$lib/collab/client';
 	import { normalizeFontMetrics } from '$lib/GTL/metrics';
+	import { normalizeFontMetadata } from '$lib/GTL/metadata';
 	import Upload from '$lib/ui/upload.svelte';
 	import Button from '$lib/ui/button.svelte';
 	import Tooltip from '$lib/ui/tooltip.svelte';
@@ -18,6 +27,7 @@
 		$syntaxes = [];
 		$glyphs = [];
 		$metrics = defaultMetrics;
+		$fontMetadata = defaultMetadata;
 		$selectedGlyph = '';
 		$currentSyntaxId = '';
 	}
@@ -33,7 +43,8 @@
 				JSON.stringify({
 					glyphs: $glyphs,
 					syntaxes: $syntaxes,
-					metrics: $metrics
+					metrics: $metrics,
+					metadata: $fontMetadata
 				})
 			);
 		let dlAnchorElem = document.createElement('a');
@@ -55,6 +66,7 @@
 			$syntaxes = res['syntaxes'];
 			$glyphs = res['glyphs'];
 			$metrics = normalizeFontMetrics(res['metrics'] || defaultMetrics);
+			$fontMetadata = normalizeFontMetadata(res['metadata'] || defaultMetadata);
 			//
 			$selectedGlyph = '';
 			$currentSyntaxId = '';
@@ -140,6 +152,98 @@
 		{#if !isProjectNameValid}
 			<p class="font-mono text-xs text-rose-700">Nome non valido. Caratteri ammessi: `a-z A-Z 0-9 _ -`.</p>
 		{/if}
+	</div>
+
+	<div class="space-y-3">
+		<p class="font-mono">Metadata font (download OTF)</p>
+		<p class="font-mono text-sm text-slate-600">
+			Questi valori vengono precompilati nel file scaricato, ma puoi modificarli quando vuoi.
+		</p>
+		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaName">Nome</label>
+				<input
+					id="fontMetaName"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="Nome font"
+					bind:value={$fontMetadata.name}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaFamily">Nome famiglia</label>
+				<input
+					id="fontMetaFamily"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="GTL"
+					bind:value={$fontMetadata.familyName}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaVersion">Versione</label>
+				<input
+					id="fontMetaVersion"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="Version 1.0"
+					bind:value={$fontMetadata.version}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaCreated">Data di creazione</label>
+				<input
+					id="fontMetaCreated"
+					type="date"
+					class="w-full border border-slate-400 px-3 py-2"
+					bind:value={$fontMetadata.createdDate}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaDesigner">Progettisti</label>
+				<input
+					id="fontMetaDesigner"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="Nome progettista"
+					bind:value={$fontMetadata.designer}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaManufacturer">Produttore</label>
+				<input
+					id="fontMetaManufacturer"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="Nome produttore"
+					bind:value={$fontMetadata.manufacturer}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaDesignerURL">URL progettista</label>
+				<input
+					id="fontMetaDesignerURL"
+					type="url"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="https://"
+					bind:value={$fontMetadata.designerURL}
+				/>
+			</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaManufacturerURL">URL produttore</label>
+				<input
+					id="fontMetaManufacturerURL"
+					type="url"
+					class="w-full border border-slate-400 px-3 py-2"
+					placeholder="https://"
+					bind:value={$fontMetadata.manufacturerURL}
+				/>
+			</div>
+		</div>
+		<div class="space-y-1">
+			<label class="font-mono text-sm" for="fontMetaLicense">Licenza</label>
+			<textarea
+				id="fontMetaLicense"
+				class="w-full min-h-20 border border-slate-400 px-3 py-2"
+				placeholder="Testo licenza"
+				bind:value={$fontMetadata.license}
+			/>
+		</div>
 	</div>
 
 	<div>

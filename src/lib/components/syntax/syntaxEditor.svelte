@@ -151,10 +151,10 @@
 		{voidLimitMessage}
 	</p>
 {/if}
-<div class="block space-y-12">
+<div class="flex flex-wrap items-start gap-6">
 	{#if syntax.rules.length}
 		{#each syntax.rules as rule (rule.symbol)}
-			<div class="space-y-3">
+			<div class="w-full min-w-[20rem] basis-[24rem] flex-1 space-y-3 border border-slate-200 bg-white p-4">
 				<SyntaxRule
 					bind:rule
 					canUseVoidShape={canRuleUseVoidShape(rule)}
