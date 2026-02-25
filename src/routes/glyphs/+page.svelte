@@ -367,10 +367,6 @@
 		return input?.value ?? '';
 	}
 
-	function inputNumericValue(event: Event): number {
-		return Number(inputValue(event));
-	}
-
 	function getAvailableComponentGlyphs(targetGlyphName: string): Array<GlyphInput> {
 		return sortGlyphs(
 			$glyphs.filter(
@@ -383,6 +379,34 @@
 		return Array.from((value ?? '').trim())[0] ?? '';
 	}
 
+	function getComponentSymbolCandidates(componentName: string): Array<string> {
+		const withoutComponentSuffix = componentName.replace(/\.component$/i, '');
+		const seen = new Set<string>();
+		const candidates: Array<string> = [];
+
+		for (const char of Array.from(withoutComponentSuffix)) {
+			if (!/[A-Za-z0-9]/.test(char)) continue;
+			if (seen.has(char)) continue;
+			seen.add(char);
+			candidates.push(char);
+		}
+
+		return candidates;
+	}
+
+	function pickAutoComponentSymbol(componentName: string, takenSymbols: Set<string>): string {
+		for (const candidate of getComponentSymbolCandidates(componentName)) {
+			if (!takenSymbols.has(candidate)) return candidate;
+		}
+
+		const fallbackSymbols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		for (const candidate of Array.from(fallbackSymbols)) {
+			if (!takenSymbols.has(candidate)) return candidate;
+		}
+
+		return '';
+	}
+
 	function normalizeComponentRotationInput(value: number): number {
 		if (!Number.isFinite(value)) return 0;
 		const stepped = Math.round(value / 15) * 15;
@@ -390,19 +414,36 @@
 		return normalized === 360 ? 0 : normalized;
 	}
 
+	function normalizeComponentPositionInput(value: number): number {
+		if (!Number.isFinite(value)) return 1;
+		return Math.max(1, Math.trunc(value));
+	}
+
+	function parseComponentPositionInput(value: string, fallback: number): number {
+		const parsed = Number.parseInt(value.trim(), 10);
+		if (!Number.isFinite(parsed)) return normalizeComponentPositionInput(fallback);
+		return normalizeComponentPositionInput(parsed);
+	}
+
 	function addComponentReference(targetGlyph: GlyphInput) {
 		if (!newComponentName || newComponentName === targetGlyph.name) return;
+		const existingComponents = getGlyphComponents(targetGlyph);
+		const takenSymbols = new Set(
+			existingComponents
+				.map((component) => normalizeComponentSymbolInput(component.symbol))
+				.filter(Boolean)
+		);
 
 		const component: GlyphComponentRef = {
 			name: newComponentName,
-			symbol: normalizeComponentSymbolInput(newComponentSymbol),
-			x: Math.max(1, Math.trunc(newComponentX || 1)),
-			y: Math.max(1, Math.trunc(newComponentY || 1)),
-			rotation: normalizeComponentRotationInput(newComponentRotation)
+			symbol: pickAutoComponentSymbol(newComponentName, takenSymbols),
+			x: 1,
+			y: 1,
+			rotation: 0
 		};
 
 		targetGlyph.structure = replaceGlyphStructureComponents(targetGlyph.structure, [
-			...getGlyphComponents(targetGlyph),
+			...existingComponents,
 			component
 		]);
 		touchGlyphs();
@@ -420,33 +461,18 @@
 	function updateComponentReference(
 		targetGlyph: GlyphInput,
 		componentIndex: number,
-		patch: Partial<GlyphComponentRef>
+		updater: (component: GlyphComponentRef) => GlyphComponentRef
 	) {
 		const currentComponents = getGlyphComponents(targetGlyph);
-		const updated = currentComponents.map((component, index) => {
-			if (index !== componentIndex) return component;
-
-			return {
-				...component,
-				...patch,
-				symbol:
-					patch.symbol !== undefined
-						? normalizeComponentSymbolInput(patch.symbol)
-						: component.symbol,
-				x: patch.x !== undefined ? Math.max(1, Math.trunc(patch.x || 1)) : component.x,
-				y: patch.y !== undefined ? Math.max(1, Math.trunc(patch.y || 1)) : component.y,
-				rotation:
-					patch.rotation !== undefined
-						? normalizeComponentRotationInput(patch.rotation)
-						: component.rotation
-			};
-		});
-
-		targetGlyph.structure = replaceGlyphStructureComponents(targetGlyph.structure, updated);
+		if (componentIndex < 0 || componentIndex >= currentComponents.length) return;
+		targetGlyph.structure = replaceGlyphStructureComponents(
+			targetGlyph.structure,
+			currentComponents.map((component, index) =>
+				index === componentIndex ? updater(component) : component
+			)
+		);
 		touchGlyphs();
 	}
-
-	//
 
 	type GlyphEditorTab = 'visualDesign' | 'glyphStructure';
 
@@ -464,10 +490,6 @@
 	let floatingToolbarDragOffsetY = 0;
 	const previewCanvasHeight = 500;
 	let newComponentName = '';
-	let newComponentSymbol = '';
-	let newComponentX = 1;
-	let newComponentY = 1;
-	let newComponentRotation = 0;
 	let selectedGlyphSetFilter = 'all';
 	let showOnlyUndesignedGlyphs = false;
 	let selectedBrushSymbol = '';
@@ -936,70 +958,24 @@
 										Componenti ({glyphComponents.length})
 									</p>
 				
-									{#if componentGlyphs.length}
-										<div class="flex flex-wrap items-end gap-2">
-											<div class="flex flex-col gap-1">
-												<label class="text-slate-500" for="component-name-select">Nome</label>
+										{#if componentGlyphs.length}
+											<div class="flex flex-wrap items-end gap-2">
+												<div class="flex flex-col gap-1">
+													<label class="text-slate-500" for="component-name-select">Nome</label>
 												<select
 													id="component-name-select"
 													class="h-10 bg-slate-200 px-2"
 													bind:value={newComponentName}
 												>
-													{#each componentGlyphs as componentGlyph (componentGlyph.id)}
-														<option value={componentGlyph.name}>{componentGlyph.name}</option>
-													{/each}
-												</select>
-											</div>
-											<div class="flex flex-col gap-1">
-												<label class="text-slate-500" for="component-symbol-input"
-													>Simbolo</label
+														{#each componentGlyphs as componentGlyph (componentGlyph.id)}
+															<option value={componentGlyph.name}>{componentGlyph.name}</option>
+														{/each}
+													</select>
+												</div>
+												<Button on:click={() => addComponentReference(g)}
+													>+ Aggiungi componente</Button
 												>
-												<input
-													id="component-symbol-input"
-													class="h-10 w-16 bg-slate-200 px-2"
-													type="text"
-													maxlength="2"
-													bind:value={newComponentSymbol}
-												/>
 											</div>
-											<div class="flex flex-col gap-1">
-												<label class="text-slate-500" for="component-x-input">x</label>
-												<input
-													id="component-x-input"
-													class="h-10 w-16 bg-slate-200 px-2"
-													type="number"
-													min="1"
-													step="1"
-													bind:value={newComponentX}
-												/>
-											</div>
-											<div class="flex flex-col gap-1">
-												<label class="text-slate-500" for="component-y-input">y</label>
-												<input
-													id="component-y-input"
-													class="h-10 w-16 bg-slate-200 px-2"
-													type="number"
-													min="1"
-													step="1"
-													bind:value={newComponentY}
-												/>
-											</div>
-											<div class="flex flex-col gap-1">
-												<label class="text-slate-500" for="component-rotation-input"
-													>rot°</label
-												>
-												<input
-													id="component-rotation-input"
-													class="h-10 w-20 bg-slate-200 px-2"
-													type="number"
-													step="15"
-													bind:value={newComponentRotation}
-												/>
-											</div>
-											<Button on:click={() => addComponentReference(g)}
-												>+ Aggiungi componente</Button
-											>
-										</div>
 									{:else}
 										<p class="text-slate-500">
 											Nessun glifo `.component` disponibile. Crea un glifo come
@@ -1007,123 +983,100 @@
 										</p>
 									{/if}
 				
-									{#if glyphComponents.length}
-										<div class="space-y-1">
-											{#each glyphComponents as component, index (`${component.name}:${index}`)}
-												<div
-													class="flex items-center justify-between gap-2 border border-slate-200 bg-white px-2 py-1"
-												>
-													<div class="flex items-center gap-2 text-[11px]">
-														<p class="truncate w-32">{component.name}</p>
-														<label class="flex items-center gap-1">
-															<span>s</span>
-															<input
-																class="w-10 h-7 border border-slate-300 px-1"
-																type="text"
-																maxlength="2"
-																value={component.symbol}
-																on:input={(event) => {
-																	updateComponentReference(g, index, {
-																		symbol: inputValue(event)
-																	});
-																}}
-																on:change={(event) => {
-																	updateComponentReference(g, index, {
-																		symbol: inputValue(event)
-																	});
-																}}
-																on:blur={(event) => {
-																	updateComponentReference(g, index, {
-																		symbol: inputValue(event)
-																	});
-																}}
-															/>
-														</label>
-														<label class="flex items-center gap-1">
-															<span>x</span>
-															<input
-																class="w-12 h-7 border border-slate-300 px-1"
-																type="number"
-																min="1"
-																step="1"
-																value={component.x}
-																on:input={(event) => {
-																	updateComponentReference(g, index, {
-																		x: inputNumericValue(event)
-																	});
-																}}
-																on:change={(event) => {
-																	updateComponentReference(g, index, {
-																		x: inputNumericValue(event)
-																	});
-																}}
-																on:blur={(event) => {
-																	updateComponentReference(g, index, {
-																		x: inputNumericValue(event)
-																	});
-																}}
-															/>
-														</label>
-														<label class="flex items-center gap-1">
-															<span>y</span>
-															<input
-																class="w-12 h-7 border border-slate-300 px-1"
-																type="number"
-																min="1"
-																step="1"
-																value={component.y}
-																on:input={(event) => {
-																	updateComponentReference(g, index, {
-																		y: inputNumericValue(event)
-																	});
-																}}
-																on:change={(event) => {
-																	updateComponentReference(g, index, {
-																		y: inputNumericValue(event)
-																	});
-																}}
-																on:blur={(event) => {
-																	updateComponentReference(g, index, {
-																		y: inputNumericValue(event)
-																	});
-																}}
-															/>
-														</label>
-														<label class="flex items-center gap-1">
-															<span>rot</span>
-															<input
-																class="w-16 h-7 border border-slate-300 px-1"
-																type="number"
-																step="15"
-																value={component.rotation}
-																on:input={(event) => {
-																	updateComponentReference(g, index, {
-																		rotation: inputNumericValue(event)
-																	});
-																}}
-																on:change={(event) => {
-																	updateComponentReference(g, index, {
-																		rotation: inputNumericValue(event)
-																	});
-																}}
-																on:blur={(event) => {
-																	updateComponentReference(g, index, {
-																		rotation: inputNumericValue(event)
-																	});
-																}}
-															/>
-														</label>
-													</div>
-													<button
-														type="button"
-														class="text-red-600 hover:text-red-800"
-														on:click={() => removeComponentReference(g, index)}
+										{#if glyphComponents.length}
+											<div class="space-y-1">
+												{#each glyphComponents as component, index (`${component.name}:${index}`)}
+													<div
+														class="flex flex-wrap items-center gap-2 border border-slate-200 bg-white px-2 py-1"
 													>
-														rimuovi
-													</button>
-												</div>
-											{/each}
-										</div>
+														<p class="max-w-[260px] truncate text-[11px]">{component.name}</p>
+														<div class="flex items-center gap-1">
+															<span class="text-[10px] text-slate-500">x</span>
+															<input
+																type="number"
+																min="1"
+																step="1"
+																class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
+																value={normalizeComponentPositionInput(component.x)}
+																on:change={(event) =>
+																	updateComponentReference(g, index, (existing) => ({
+																		...existing,
+																		x: parseComponentPositionInput(
+																			inputValue(event),
+																			existing.x
+																		)
+																	}))}
+															/>
+														</div>
+														<div class="flex items-center gap-1">
+															<span class="text-[10px] text-slate-500">y</span>
+															<input
+																type="number"
+																min="1"
+																step="1"
+																class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
+																value={normalizeComponentPositionInput(component.y)}
+																on:change={(event) =>
+																	updateComponentReference(g, index, (existing) => ({
+																		...existing,
+																		y: parseComponentPositionInput(
+																			inputValue(event),
+																			existing.y
+																		)
+																	}))}
+															/>
+														</div>
+														<button
+															type="button"
+															class={`h-6 px-2 text-[11px] ${
+																component.flipped
+																	? 'bg-slate-800 text-white'
+																	: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+															}`}
+															on:click={() =>
+																updateComponentReference(g, index, (existing) => ({
+																	...existing,
+																	flipped: !existing.flipped
+																}))}
+														>
+															flipped
+														</button>
+														<button
+															type="button"
+															class={`h-6 px-2 text-[11px] ${
+																component.mirrored
+																	? 'bg-slate-800 text-white'
+																	: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+															}`}
+															on:click={() =>
+																updateComponentReference(g, index, (existing) => ({
+																	...existing,
+																	mirrored: !existing.mirrored
+																}))}
+														>
+															mirrored
+														</button>
+														<button
+															type="button"
+															class="h-6 px-2 bg-slate-200 text-[11px] text-slate-800 hover:bg-slate-300"
+															on:click={() =>
+																updateComponentReference(g, index, (existing) => ({
+																	...existing,
+																	rotation: normalizeComponentRotationInput(existing.rotation + 15)
+																}))}
+														>
+															rotate +15°
+														</button>
+														<button
+															type="button"
+															class="h-6 px-2 text-[11px] text-red-600 hover:text-red-800"
+															on:click={() => removeComponentReference(g, index)}
+														>
+															rimuovi
+														</button>
+													</div>
+												{/each}
+											</div>
 									{/if}
 								</div>
 			

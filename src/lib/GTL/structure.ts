@@ -1,5 +1,8 @@
 import type { GlyphInput, Rule } from '../types';
-import { mapDirectionalSymbolsForRotation } from './structureTransforms';
+import {
+	mapDirectionalSymbolsForReflection,
+	mapDirectionalSymbolsForRotation
+} from './structureTransforms';
 
 export interface GlyphComponentRef {
 	name: string;
@@ -7,6 +10,8 @@ export interface GlyphComponentRef {
 	x: number;
 	y: number;
 	rotation: number;
+	flipped?: boolean;
+	mirrored?: boolean;
 }
 
 export interface ParsedGlyphStructure {
@@ -49,6 +54,10 @@ function sanitizeComponentRotation(value: number | undefined): number {
 	return normalized === 360 ? 0 : normalized;
 }
 
+function sanitizeComponentBoolean(value: boolean | undefined): boolean {
+	return value === true;
+}
+
 function sanitizeComponentSymbol(value: string | undefined): string {
 	if (typeof value !== 'string') return '';
 	const first = Array.from(value.trim())[0];
@@ -68,7 +77,9 @@ function sanitizeComponentRef(partial: Partial<GlyphComponentRef>): GlyphCompone
 		symbol: sanitizeComponentSymbol(partial.symbol),
 		x: sanitizeComponentPosition(partial.x),
 		y: sanitizeComponentPosition(partial.y),
-		rotation: sanitizeComponentRotation(partial.rotation)
+		rotation: sanitizeComponentRotation(partial.rotation),
+		flipped: sanitizeComponentBoolean(partial.flipped),
+		mirrored: sanitizeComponentBoolean(partial.mirrored)
 	};
 }
 
@@ -90,6 +101,13 @@ function parseScalar(rawValue: string): string {
 	}
 
 	return value;
+}
+
+function parseBooleanScalar(rawValue: string): boolean | undefined {
+	const normalized = rawValue.trim().toLowerCase();
+	if (normalized === 'true') return true;
+	if (normalized === 'false') return false;
+	return undefined;
 }
 
 function formatScalar(value: string): string {
@@ -142,6 +160,8 @@ function parseFrontmatter(frontmatter: string | undefined): Array<GlyphComponent
 			if (inlineKey === 'x') current.x = Number.parseInt(inlineValue, 10);
 			if (inlineKey === 'y') current.y = Number.parseInt(inlineValue, 10);
 			if (inlineKey === 'rotation') current.rotation = Number.parseInt(inlineValue, 10);
+			if (inlineKey === 'flipped') current.flipped = parseBooleanScalar(inlineValue);
+			if (inlineKey === 'mirrored') current.mirrored = parseBooleanScalar(inlineValue);
 			continue;
 		}
 
@@ -158,6 +178,8 @@ function parseFrontmatter(frontmatter: string | undefined): Array<GlyphComponent
 		if (key === 'x') current.x = Number.parseInt(parsedValue, 10);
 		if (key === 'y') current.y = Number.parseInt(parsedValue, 10);
 		if (key === 'rotation') current.rotation = Number.parseInt(parsedValue, 10);
+		if (key === 'flipped') current.flipped = parseBooleanScalar(parsedValue);
+		if (key === 'mirrored') current.mirrored = parseBooleanScalar(parsedValue);
 	}
 
 	flushCurrent();
@@ -218,6 +240,12 @@ export function serializeGlyphStructure(parsed: ParsedGlyphStructure): string {
 		lines.push(`    x: ${sanitizeComponentPosition(component.x)}`);
 		lines.push(`    y: ${sanitizeComponentPosition(component.y)}`);
 		lines.push(`    rotation: ${sanitizeComponentRotation(component.rotation)}`);
+		if (sanitizeComponentBoolean(component.flipped)) {
+			lines.push(`    flipped: true`);
+		}
+		if (sanitizeComponentBoolean(component.mirrored)) {
+			lines.push(`    mirrored: true`);
+		}
 	}
 	lines.push(FRONTMATTER_SEPARATOR);
 
@@ -310,32 +338,70 @@ function getDirectionalRotationMap(
 function mapComponentSymbolForRotation(
 	value: string,
 	rotation: number,
+	flipped: boolean,
+	mirrored: boolean,
 	rulesBySymbol: Record<string, Rule> | undefined,
-	rotationMapsByDegrees: Map<number, Map<string, string>>
+	rotationMapsByDegrees: Map<number, Map<string, string>>,
+	reflectionMapsByAxis: Map<'vertical' | 'horizontal', Map<string, string>>
 ): string {
+	let next = value;
+	if (rulesBySymbol && mirrored) {
+		if (!reflectionMapsByAxis.has('vertical')) {
+			reflectionMapsByAxis.set(
+				'vertical',
+				mapDirectionalSymbolsForReflection(rulesBySymbol, 'vertical')
+			);
+		}
+		const map = reflectionMapsByAxis.get('vertical');
+		next = map?.get(next) ?? next;
+	}
+	if (rulesBySymbol && flipped) {
+		if (!reflectionMapsByAxis.has('horizontal')) {
+			reflectionMapsByAxis.set(
+				'horizontal',
+				mapDirectionalSymbolsForReflection(rulesBySymbol, 'horizontal')
+			);
+		}
+		const map = reflectionMapsByAxis.get('horizontal');
+		next = map?.get(next) ?? next;
+	}
+
 	const mappedSymbols = getDirectionalRotationMap(rotationMapsByDegrees, rulesBySymbol, rotation);
-	if (!mappedSymbols.size) return value;
-	return mappedSymbols.get(value) ?? value;
+	if (!mappedSymbols.size) return next;
+	return mappedSymbols.get(next) ?? next;
 }
 
-function rotateCellInComponent(
+function transformCellInComponent(
 	x: number,
 	y: number,
 	componentWidth: number,
 	componentHeight: number,
+	flipped: boolean,
+	mirrored: boolean,
 	rotation: number
 ): { x: number; y: number } {
+	const width = Math.max(1, componentWidth);
+	const height = Math.max(1, componentHeight);
+	let nextX = x;
+	let nextY = y;
+	if (mirrored) {
+		nextX = width - 1 - nextX;
+	}
+	if (flipped) {
+		nextY = height - 1 - nextY;
+	}
+
 	const normalizedRotation = sanitizeComponentRotation(rotation);
-	if (!normalizedRotation) return { x, y };
+	if (!normalizedRotation) return { x: nextX, y: nextY };
 
 	const radians = (normalizedRotation * Math.PI) / 180;
 	const cos = Math.cos(radians);
 	const sin = Math.sin(radians);
-	const centerX = (Math.max(1, componentWidth) - 1) / 2;
-	const centerY = (Math.max(1, componentHeight) - 1) / 2;
+	const centerX = (width - 1) / 2;
+	const centerY = (height - 1) / 2;
 
-	const relativeX = x - centerX;
-	const relativeY = y - centerY;
+	const relativeX = nextX - centerX;
+	const relativeY = nextY - centerY;
 	const rotatedX = relativeX * cos - relativeY * sin + centerX;
 	const rotatedY = relativeX * sin + relativeY * cos + centerY;
 
@@ -352,7 +418,8 @@ function applyComponent(
 	transparentSymbols: Set<string>,
 	applySymbolOverride: boolean,
 	rulesBySymbol: Record<string, Rule> | undefined,
-	rotationMapsByDegrees: Map<number, Map<string, string>>
+	rotationMapsByDegrees: Map<number, Map<string, string>>,
+	reflectionMapsByAxis: Map<'vertical' | 'horizontal', Map<string, string>>
 ): Array<Array<string>> {
 	const matrix = baseRows.map((row) => [...row]);
 	const componentRows = splitRows(componentBody);
@@ -364,19 +431,32 @@ function applyComponent(
 	const offsetY = Math.max(0, sanitizeComponentPosition(component.y) - 1);
 	const overrideSymbol = sanitizeComponentSymbol(component.symbol);
 	const rotation = sanitizeComponentRotation(component.rotation);
+	const flipped = sanitizeComponentBoolean(component.flipped);
+	const mirrored = sanitizeComponentBoolean(component.mirrored);
 
 	for (let y = 0; y < componentRows.length; y++) {
 		for (let x = 0; x < componentRows[y].length; x++) {
 			const value = componentRows[y][x];
 			if (transparentSymbols.has(value)) continue;
 
-			const rotatedCell = rotateCellInComponent(x, y, componentWidth, componentHeight, rotation);
+			const rotatedCell = transformCellInComponent(
+				x,
+				y,
+				componentWidth,
+				componentHeight,
+				flipped,
+				mirrored,
+				rotation
+			);
 			const rawSymbol = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
 			const nextValue = mapComponentSymbolForRotation(
 				rawSymbol,
 				rotation,
+				flipped,
+				mirrored,
 				rulesBySymbol,
-				rotationMapsByDegrees
+				rotationMapsByDegrees,
+				reflectionMapsByAxis
 			);
 			const targetRow = offsetY + rotatedCell.y;
 			const targetCol = offsetX + rotatedCell.x;
@@ -398,7 +478,8 @@ function applyComponentWithMask(
 	transparentSymbols: Set<string>,
 	applySymbolOverride: boolean,
 	rulesBySymbol: Record<string, Rule> | undefined,
-	rotationMapsByDegrees: Map<number, Map<string, string>>
+	rotationMapsByDegrees: Map<number, Map<string, string>>,
+	reflectionMapsByAxis: Map<'vertical' | 'horizontal', Map<string, string>>
 ): { rows: Array<Array<string>>; componentSources: Array<Array<Array<string>>> } {
 	const matrix = baseRows.map((row) => [...row]);
 	const sourceMatrix = baseComponentSources.map((row) => row.map((cell) => [...cell]));
@@ -414,19 +495,32 @@ function applyComponentWithMask(
 	const overrideSymbol = sanitizeComponentSymbol(component.symbol);
 	const componentName = sanitizeComponentName(component.name);
 	const rotation = sanitizeComponentRotation(component.rotation);
+	const flipped = sanitizeComponentBoolean(component.flipped);
+	const mirrored = sanitizeComponentBoolean(component.mirrored);
 
 	for (let y = 0; y < componentRows.length; y++) {
 		for (let x = 0; x < componentRows[y].length; x++) {
 			const value = componentRows[y][x];
 			if (transparentSymbols.has(value)) continue;
 
-			const rotatedCell = rotateCellInComponent(x, y, componentWidth, componentHeight, rotation);
+			const rotatedCell = transformCellInComponent(
+				x,
+				y,
+				componentWidth,
+				componentHeight,
+				flipped,
+				mirrored,
+				rotation
+			);
 			const rawSymbol = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
 			const nextValue = mapComponentSymbolForRotation(
 				rawSymbol,
 				rotation,
+				flipped,
+				mirrored,
 				rulesBySymbol,
-				rotationMapsByDegrees
+				rotationMapsByDegrees,
+				reflectionMapsByAxis
 			);
 			const targetRow = offsetY + rotatedCell.y;
 			const targetCol = offsetX + rotatedCell.x;
@@ -519,7 +613,8 @@ function resolveStructureBody(
 	transparentSymbols: Set<string> = new Set<string>([' ']),
 	applySymbolOverride = true,
 	rulesBySymbol?: Record<string, Rule>,
-	rotationMapsByDegrees: Map<number, Map<string, string>> = new Map()
+	rotationMapsByDegrees: Map<number, Map<string, string>> = new Map(),
+	reflectionMapsByAxis: Map<'vertical' | 'horizontal', Map<string, string>> = new Map()
 ): string {
 	if (cache.has(glyphName)) {
 		return cache.get(glyphName) ?? '';
@@ -547,7 +642,8 @@ function resolveStructureBody(
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
-			rotationMapsByDegrees
+			rotationMapsByDegrees,
+			reflectionMapsByAxis
 		);
 		rows = applyComponent(
 			rows,
@@ -556,7 +652,8 @@ function resolveStructureBody(
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
-			rotationMapsByDegrees
+			rotationMapsByDegrees,
+			reflectionMapsByAxis
 		);
 	}
 
@@ -577,7 +674,8 @@ function resolveStructureWithMask(
 	transparentSymbols: Set<string> = new Set<string>([' ']),
 	applySymbolOverride = true,
 	rulesBySymbol?: Record<string, Rule>,
-	rotationMapsByDegrees: Map<number, Map<string, string>> = new Map()
+	rotationMapsByDegrees: Map<number, Map<string, string>> = new Map(),
+	reflectionMapsByAxis: Map<'vertical' | 'horizontal', Map<string, string>> = new Map()
 ): ResolvedGlyphVisualData {
 	if (cache.has(glyphName)) {
 		return cache.get(glyphName) ?? { body: '', componentMask: '', componentSources: [] };
@@ -612,7 +710,8 @@ function resolveStructureWithMask(
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
-			rotationMapsByDegrees
+			rotationMapsByDegrees,
+			reflectionMapsByAxis
 		);
 		const next = applyComponentWithMask(
 			rows,
@@ -623,7 +722,8 @@ function resolveStructureWithMask(
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
-			rotationMapsByDegrees
+			rotationMapsByDegrees,
+			reflectionMapsByAxis
 		);
 		rows = next.rows;
 		componentSources = next.componentSources;
@@ -659,6 +759,7 @@ export function resolveGlyphStructures(
 	const applySymbolOverride = shouldApplySymbolOverride(options);
 	const rulesBySymbol = options?.rulesBySymbol;
 	const rotationMapsByDegrees = new Map<number, Map<string, string>>();
+	const reflectionMapsByAxis = new Map<'vertical' | 'horizontal', Map<string, string>>();
 	for (const glyph of glyphs) {
 		resolveStructureBody(
 			glyph.name,
@@ -669,7 +770,8 @@ export function resolveGlyphStructures(
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
-			rotationMapsByDegrees
+			rotationMapsByDegrees,
+			reflectionMapsByAxis
 		);
 	}
 
@@ -692,6 +794,7 @@ export function resolveGlyphStructuresWithComponentMask(
 	const applySymbolOverride = shouldApplySymbolOverride(options);
 	const rulesBySymbol = options?.rulesBySymbol;
 	const rotationMapsByDegrees = new Map<number, Map<string, string>>();
+	const reflectionMapsByAxis = new Map<'vertical' | 'horizontal', Map<string, string>>();
 	for (const glyph of glyphs) {
 		resolveStructureWithMask(
 			glyph.name,
@@ -702,7 +805,8 @@ export function resolveGlyphStructuresWithComponentMask(
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
-			rotationMapsByDegrees
+			rotationMapsByDegrees,
+			reflectionMapsByAxis
 		);
 	}
 
