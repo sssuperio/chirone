@@ -274,23 +274,34 @@
 		return '.';
 	}
 
-	function fillVoidInStructure(structure: string, fillSymbol: string, targetHeight: number): string {
+	function fillVoidInStructure(
+		structure: string,
+		fillSymbol: string,
+		targetHeight: number,
+		occupiedStructure: string
+	): string {
 		const parsed = parseGlyphStructure(structure);
 		const sourceRows = parsed.body ? parsed.body.split(/\r?\n/) : [];
-		const width = Math.max(1, ...sourceRows.map((row) => row.length));
-		const height = Math.max(1, targetHeight, sourceRows.length);
-		const rows = Array.from({ length: height }, (_, index) => sourceRows[index] ?? '');
+		const occupiedRows = occupiedStructure ? occupiedStructure.split(/\r?\n/) : [];
+		const width = Math.max(
+			1,
+			...sourceRows.map((row) => row.length),
+			...occupiedRows.map((row) => row.length)
+		);
+		const height = Math.max(1, targetHeight, sourceRows.length, occupiedRows.length);
 
 		if (width <= 0) return structure;
 
-		const nextBody = rows
-			.map((row) =>
-				row
-					.padEnd(width, ' ')
-					.split('')
-					.map((char) => (char === ' ' ? fillSymbol : char))
-					.join('')
-			)
+		const nextBody = Array.from({ length: height }, (_, rowIndex) => {
+			const sourceRow = (sourceRows[rowIndex] ?? '').padEnd(width, ' ');
+			const occupiedRow = (occupiedRows[rowIndex] ?? '').padEnd(width, ' ');
+			return Array.from({ length: width }, (_, colIndex) => {
+				const sourceCell = sourceRow[colIndex] ?? ' ';
+				if (sourceCell !== ' ') return sourceCell;
+				const occupiedCell = occupiedRow[colIndex] ?? ' ';
+				return occupiedCell === ' ' ? fillSymbol : ' ';
+			}).join('');
+		})
 			.join('\n');
 
 		return replaceGlyphStructureBody(structure, nextBody);
@@ -416,7 +427,7 @@
 
 	function normalizeComponentPositionInput(value: number): number {
 		if (!Number.isFinite(value)) return 1;
-		return Math.max(1, Math.trunc(value));
+		return Math.trunc(value);
 	}
 
 	function parseComponentPositionInput(value: string, fallback: number): number {
@@ -556,7 +567,8 @@
 		selectedGlyphData.structure = fillVoidInStructure(
 			selectedGlyphData.structure,
 			voidFillSymbol,
-			fillTargetHeight
+			fillTargetHeight,
+			getResolvedGlyphBody(selectedGlyphData)
 		);
 		touchGlyphs();
 	}
@@ -994,7 +1006,6 @@
 															<span class="text-[10px] text-slate-500">x</span>
 															<input
 																type="number"
-																min="1"
 																step="1"
 																class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
 																value={normalizeComponentPositionInput(component.x)}
@@ -1012,7 +1023,6 @@
 															<span class="text-[10px] text-slate-500">y</span>
 															<input
 																type="number"
-																min="1"
 																step="1"
 																class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
 																value={normalizeComponentPositionInput(component.y)}

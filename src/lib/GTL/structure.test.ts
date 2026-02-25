@@ -262,4 +262,60 @@ components:
 		);
 		expect(resolved.get('A')).toBe('i.i.');
 	});
+
+	it('keeps negative component coordinates in frontmatter', () => {
+		const structure = serializeGlyphStructure({
+			components: [{ name: 'part.component', symbol: 'p', x: -2, y: -3, rotation: 0 }],
+			body: ''
+		});
+		const parsed = parseGlyphStructure(structure);
+
+		expect(parsed.components).toHaveLength(1);
+		expect(parsed.components[0].x).toBe(-2);
+		expect(parsed.components[0].y).toBe(-3);
+	});
+
+	it('clips component cells outside negative bounds without growing glyph size', () => {
+		const component: GlyphInput = {
+			id: 'part',
+			name: 'part.component',
+			structure: 'ab\ncd'
+		};
+		const normalPlacement: GlyphInput = {
+			id: 'normal',
+			name: 'normal',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'part.component', symbol: '', x: 1, y: 1, rotation: 0 }],
+				body: ''
+			})
+		};
+		const negativePlacement: GlyphInput = {
+			id: 'negative',
+			name: 'negative',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'part.component', symbol: '', x: 0, y: 0, rotation: 0 }],
+				body: ''
+			})
+		};
+		const positivePlacement: GlyphInput = {
+			id: 'positive',
+			name: 'positive',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'part.component', symbol: '', x: 3, y: 1, rotation: 0 }],
+				body: ''
+			})
+		};
+
+		const resolved = resolveGlyphStructures(
+			[component, normalPlacement, negativePlacement, positivePlacement],
+			{
+			transparentSymbols: [' ']
+			}
+		);
+
+		expect(resolved.get('normal')).toBe('ab\ncd');
+		expect(resolved.get('negative')).toBe('d');
+		expect(resolved.get('positive')).toBe('');
+		expect((resolved.get('negative') ?? '').length).toBeLessThan((resolved.get('normal') ?? '').length);
+	});
 });

@@ -44,7 +44,7 @@ function normalizeLineEndings(value: string): string {
 
 function sanitizeComponentPosition(value: number | undefined): number {
 	if (!Number.isFinite(value)) return DEFAULT_COMPONENT_POSITION;
-	return Math.max(DEFAULT_COMPONENT_POSITION, Math.trunc(value as number));
+	return Math.trunc(value as number);
 }
 
 function sanitizeComponentRotation(value: number | undefined): number {
@@ -282,26 +282,24 @@ function rowsToBody(rows: Array<Array<string>>): string {
 	return serializedRows.join('\n');
 }
 
-function ensureCell(matrix: Array<Array<string>>, row: number, col: number) {
-	while (matrix.length <= row) {
-		matrix.push([]);
-	}
-	while (matrix[row].length <= col) {
-		matrix[row].push(' ');
-	}
-}
-
-function ensureComponentSourceCell(matrix: Array<Array<Array<string>>>, row: number, col: number) {
-	while (matrix.length <= row) {
-		matrix.push([]);
-	}
-	while (matrix[row].length <= col) {
-		matrix[row].push([]);
-	}
-}
-
 function createComponentSourceRowsFromBody(rows: Array<Array<string>>): Array<Array<Array<string>>> {
 	return rows.map((row) => Array.from({ length: row.length }, () => [] as Array<string>));
+}
+
+function getRowsWidth(rows: Array<Array<string>>): number {
+	return Math.max(0, ...rows.map((row) => row.length));
+}
+
+function createEmptyRows(height: number, width: number): Array<Array<string>> {
+	if (height <= 0 || width <= 0) return [];
+	return Array.from({ length: height }, () => Array.from({ length: width }, () => ' '));
+}
+
+function createEmptyComponentSourceRows(height: number, width: number): Array<Array<Array<string>>> {
+	if (height <= 0 || width <= 0) return [];
+	return Array.from({ length: height }, () =>
+		Array.from({ length: width }, () => [] as Array<string>)
+	);
 }
 
 function normalizeTransparentSymbols(options?: ResolveStructureOptions): Set<string> {
@@ -422,13 +420,15 @@ function applyComponent(
 	reflectionMapsByAxis: Map<'vertical' | 'horizontal', Map<string, string>>
 ): Array<Array<string>> {
 	const matrix = baseRows.map((row) => [...row]);
+	const matrixHeight = matrix.length;
+	if (!matrixHeight) return matrix;
 	const componentRows = splitRows(componentBody);
 	if (!componentRows.length) return matrix;
 	const componentHeight = componentRows.length;
 	const componentWidth = Math.max(0, ...componentRows.map((row) => row.length));
 
-	const offsetX = Math.max(0, sanitizeComponentPosition(component.x) - 1);
-	const offsetY = Math.max(0, sanitizeComponentPosition(component.y) - 1);
+	const offsetX = sanitizeComponentPosition(component.x) - 1;
+	const offsetY = sanitizeComponentPosition(component.y) - 1;
 	const overrideSymbol = sanitizeComponentSymbol(component.symbol);
 	const rotation = sanitizeComponentRotation(component.rotation);
 	const flipped = sanitizeComponentBoolean(component.flipped);
@@ -461,7 +461,8 @@ function applyComponent(
 			const targetRow = offsetY + rotatedCell.y;
 			const targetCol = offsetX + rotatedCell.x;
 			if (targetRow < 0 || targetCol < 0) continue;
-			ensureCell(matrix, targetRow, targetCol);
+			if (targetRow >= matrixHeight) continue;
+			if (targetCol >= matrix[targetRow].length) continue;
 			matrix[targetRow][targetCol] = nextValue;
 		}
 	}
@@ -483,6 +484,10 @@ function applyComponentWithMask(
 ): { rows: Array<Array<string>>; componentSources: Array<Array<Array<string>>> } {
 	const matrix = baseRows.map((row) => [...row]);
 	const sourceMatrix = baseComponentSources.map((row) => row.map((cell) => [...cell]));
+	const matrixHeight = matrix.length;
+	if (!matrixHeight) {
+		return { rows: matrix, componentSources: sourceMatrix };
+	}
 	const componentRows = splitRows(componentBody);
 	if (!componentRows.length) {
 		return { rows: matrix, componentSources: sourceMatrix };
@@ -490,8 +495,8 @@ function applyComponentWithMask(
 	const componentHeight = componentRows.length;
 	const componentWidth = Math.max(0, ...componentRows.map((row) => row.length));
 
-	const offsetX = Math.max(0, sanitizeComponentPosition(component.x) - 1);
-	const offsetY = Math.max(0, sanitizeComponentPosition(component.y) - 1);
+	const offsetX = sanitizeComponentPosition(component.x) - 1;
+	const offsetY = sanitizeComponentPosition(component.y) - 1;
 	const overrideSymbol = sanitizeComponentSymbol(component.symbol);
 	const componentName = sanitizeComponentName(component.name);
 	const rotation = sanitizeComponentRotation(component.rotation);
@@ -525,8 +530,8 @@ function applyComponentWithMask(
 			const targetRow = offsetY + rotatedCell.y;
 			const targetCol = offsetX + rotatedCell.x;
 			if (targetRow < 0 || targetCol < 0) continue;
-			ensureCell(matrix, targetRow, targetCol);
-			ensureComponentSourceCell(sourceMatrix, targetRow, targetCol);
+			if (targetRow >= matrixHeight) continue;
+			if (targetCol >= matrix[targetRow].length) continue;
 			matrix[targetRow][targetCol] = nextValue;
 
 			const nestedSources = componentSources[y]?.[x] ?? [];
@@ -554,12 +559,16 @@ function overlayBodyRows(
 	overlayRows: Array<Array<string>>
 ): Array<Array<string>> {
 	const matrix = baseRows.map((row) => [...row]);
+	const matrixHeight = matrix.length;
+	if (!matrixHeight) return matrix;
 	for (let y = 0; y < overlayRows.length; y++) {
 		for (let x = 0; x < overlayRows[y].length; x++) {
 			const value = overlayRows[y][x];
 			// Space keeps component/background content visible.
 			if (value === ' ') continue;
-			ensureCell(matrix, y, x);
+			if (y < 0 || x < 0) continue;
+			if (y >= matrixHeight) continue;
+			if (x >= matrix[y].length) continue;
 			matrix[y][x] = value;
 		}
 	}
@@ -573,13 +582,18 @@ function overlayBodyRowsWithMask(
 ): { rows: Array<Array<string>>; componentSources: Array<Array<Array<string>>> } {
 	const matrix = baseRows.map((row) => [...row]);
 	const sourceMatrix = baseComponentSources.map((row) => row.map((cell) => [...cell]));
+	const matrixHeight = matrix.length;
+	if (!matrixHeight) {
+		return { rows: matrix, componentSources: sourceMatrix };
+	}
 	for (let y = 0; y < overlayRows.length; y++) {
 		for (let x = 0; x < overlayRows[y].length; x++) {
 			const value = overlayRows[y][x];
 			// Space keeps component/background content visible.
 			if (value === ' ') continue;
-			ensureCell(matrix, y, x);
-			ensureComponentSourceCell(sourceMatrix, y, x);
+			if (y < 0 || x < 0) continue;
+			if (y >= matrixHeight) continue;
+			if (x >= matrix[y].length) continue;
 			matrix[y][x] = value;
 		}
 	}
@@ -630,7 +644,9 @@ function resolveStructureBody(
 
 	visiting.add(glyphName);
 	const overlayRows = splitRows(parsed.body);
-	let rows: Array<Array<string>> = [];
+	let templateHeight = overlayRows.length;
+	let templateWidth = getRowsWidth(overlayRows);
+	const resolvedComponents: Array<{ ref: GlyphComponentRef; body: string }> = [];
 
 	for (const component of parsed.components) {
 		const componentBody = resolveStructureBody(
@@ -645,10 +661,18 @@ function resolveStructureBody(
 			rotationMapsByDegrees,
 			reflectionMapsByAxis
 		);
+		const componentRows = splitRows(componentBody);
+		templateHeight = Math.max(templateHeight, componentRows.length);
+		templateWidth = Math.max(templateWidth, getRowsWidth(componentRows));
+		resolvedComponents.push({ ref: component, body: componentBody });
+	}
+
+	let rows = createEmptyRows(templateHeight, templateWidth);
+	for (const component of resolvedComponents) {
 		rows = applyComponent(
 			rows,
-			componentBody,
-			component,
+			component.body,
+			component.ref,
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
@@ -697,8 +721,9 @@ function resolveStructureWithMask(
 
 	visiting.add(glyphName);
 	const overlayRows = splitRows(parsed.body);
-	let rows: Array<Array<string>> = [];
-	let componentSources: Array<Array<Array<string>>> = [];
+	let templateHeight = overlayRows.length;
+	let templateWidth = getRowsWidth(overlayRows);
+	const resolvedComponents: Array<{ ref: GlyphComponentRef; data: ResolvedGlyphVisualData }> = [];
 
 	for (const component of parsed.components) {
 		const componentResolved = resolveStructureWithMask(
@@ -713,12 +738,21 @@ function resolveStructureWithMask(
 			rotationMapsByDegrees,
 			reflectionMapsByAxis
 		);
+		const componentRows = splitRows(componentResolved.body);
+		templateHeight = Math.max(templateHeight, componentRows.length);
+		templateWidth = Math.max(templateWidth, getRowsWidth(componentRows));
+		resolvedComponents.push({ ref: component, data: componentResolved });
+	}
+
+	let rows = createEmptyRows(templateHeight, templateWidth);
+	let componentSources = createEmptyComponentSourceRows(templateHeight, templateWidth);
+	for (const component of resolvedComponents) {
 		const next = applyComponentWithMask(
 			rows,
 			componentSources,
-			componentResolved.body,
-			componentResolved.componentSources,
-			component,
+			component.data.body,
+			component.data.componentSources,
+			component.ref,
 			transparentSymbols,
 			applySymbolOverride,
 			rulesBySymbol,
