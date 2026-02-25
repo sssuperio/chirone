@@ -1,4 +1,5 @@
-import type { GlyphInput } from '../types';
+import type { GlyphInput, Rule } from '../types';
+import { mapDirectionalSymbolsForRotation } from './structureTransforms';
 
 export interface GlyphComponentRef {
 	name: string;
@@ -16,6 +17,7 @@ export interface ParsedGlyphStructure {
 export interface ResolveStructureOptions {
 	transparentSymbols?: Iterable<string>;
 	applySymbolOverride?: boolean;
+	rulesBySymbol?: Record<string, Rule>;
 }
 
 export interface ResolvedGlyphVisualData {
@@ -284,6 +286,33 @@ function shouldApplySymbolOverride(options?: ResolveStructureOptions): boolean {
 	return options?.applySymbolOverride ?? true;
 }
 
+function getDirectionalRotationMap(
+	rotationMapsByDegrees: Map<number, Map<string, string>>,
+	rulesBySymbol: Record<string, Rule> | undefined,
+	rotation: number
+): Map<string, string> {
+	if (!rulesBySymbol) return new Map<string, string>();
+	if (!rotation) return new Map<string, string>();
+	if (rotation % 90 !== 0) return new Map<string, string>();
+
+	if (!rotationMapsByDegrees.has(rotation)) {
+		rotationMapsByDegrees.set(rotation, mapDirectionalSymbolsForRotation(rulesBySymbol, rotation));
+	}
+
+	return rotationMapsByDegrees.get(rotation) ?? new Map<string, string>();
+}
+
+function mapComponentSymbolForRotation(
+	value: string,
+	rotation: number,
+	rulesBySymbol: Record<string, Rule> | undefined,
+	rotationMapsByDegrees: Map<number, Map<string, string>>
+): string {
+	const mappedSymbols = getDirectionalRotationMap(rotationMapsByDegrees, rulesBySymbol, rotation);
+	if (!mappedSymbols.size) return value;
+	return mappedSymbols.get(value) ?? value;
+}
+
 function rotateCellInComponent(
 	x: number,
 	y: number,
@@ -316,7 +345,9 @@ function applyComponent(
 	componentBody: string,
 	component: GlyphComponentRef,
 	transparentSymbols: Set<string>,
-	applySymbolOverride: boolean
+	applySymbolOverride: boolean,
+	rulesBySymbol: Record<string, Rule> | undefined,
+	rotationMapsByDegrees: Map<number, Map<string, string>>
 ): Array<Array<string>> {
 	const matrix = baseRows.map((row) => [...row]);
 	const componentRows = splitRows(componentBody);
@@ -335,7 +366,13 @@ function applyComponent(
 			if (transparentSymbols.has(value)) continue;
 
 			const rotatedCell = rotateCellInComponent(x, y, componentWidth, componentHeight, rotation);
-			const nextValue = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
+			const rawSymbol = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
+			const nextValue = mapComponentSymbolForRotation(
+				rawSymbol,
+				rotation,
+				rulesBySymbol,
+				rotationMapsByDegrees
+			);
 			const targetRow = offsetY + rotatedCell.y;
 			const targetCol = offsetX + rotatedCell.x;
 			if (targetRow < 0 || targetCol < 0) continue;
@@ -354,7 +391,9 @@ function applyComponentWithMask(
 	componentSources: Array<Array<Array<string>>>,
 	component: GlyphComponentRef,
 	transparentSymbols: Set<string>,
-	applySymbolOverride: boolean
+	applySymbolOverride: boolean,
+	rulesBySymbol: Record<string, Rule> | undefined,
+	rotationMapsByDegrees: Map<number, Map<string, string>>
 ): { rows: Array<Array<string>>; componentSources: Array<Array<Array<string>>> } {
 	const matrix = baseRows.map((row) => [...row]);
 	const sourceMatrix = baseComponentSources.map((row) => row.map((cell) => [...cell]));
@@ -377,7 +416,13 @@ function applyComponentWithMask(
 			if (transparentSymbols.has(value)) continue;
 
 			const rotatedCell = rotateCellInComponent(x, y, componentWidth, componentHeight, rotation);
-			const nextValue = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
+			const rawSymbol = applySymbolOverride && overrideSymbol ? overrideSymbol : value;
+			const nextValue = mapComponentSymbolForRotation(
+				rawSymbol,
+				rotation,
+				rulesBySymbol,
+				rotationMapsByDegrees
+			);
 			const targetRow = offsetY + rotatedCell.y;
 			const targetCol = offsetX + rotatedCell.x;
 			if (targetRow < 0 || targetCol < 0) continue;
@@ -427,7 +472,9 @@ function resolveStructureBody(
 	visiting: Set<string>,
 	depth = 0,
 	transparentSymbols: Set<string> = new Set<string>([' ']),
-	applySymbolOverride = true
+	applySymbolOverride = true,
+	rulesBySymbol?: Record<string, Rule>,
+	rotationMapsByDegrees: Map<number, Map<string, string>> = new Map()
 ): string {
 	if (cache.has(glyphName)) {
 		return cache.get(glyphName) ?? '';
@@ -452,9 +499,19 @@ function resolveStructureBody(
 			visiting,
 			depth + 1,
 			transparentSymbols,
-			applySymbolOverride
+			applySymbolOverride,
+			rulesBySymbol,
+			rotationMapsByDegrees
 		);
-		rows = applyComponent(rows, componentBody, component, transparentSymbols, applySymbolOverride);
+		rows = applyComponent(
+			rows,
+			componentBody,
+			component,
+			transparentSymbols,
+			applySymbolOverride,
+			rulesBySymbol,
+			rotationMapsByDegrees
+		);
 	}
 
 	const resolved = rowsToBody(rows);
@@ -470,7 +527,9 @@ function resolveStructureWithMask(
 	visiting: Set<string>,
 	depth = 0,
 	transparentSymbols: Set<string> = new Set<string>([' ']),
-	applySymbolOverride = true
+	applySymbolOverride = true,
+	rulesBySymbol?: Record<string, Rule>,
+	rotationMapsByDegrees: Map<number, Map<string, string>> = new Map()
 ): ResolvedGlyphVisualData {
 	if (cache.has(glyphName)) {
 		return cache.get(glyphName) ?? { body: '', componentMask: '', componentSources: [] };
@@ -502,7 +561,9 @@ function resolveStructureWithMask(
 			visiting,
 			depth + 1,
 			transparentSymbols,
-			applySymbolOverride
+			applySymbolOverride,
+			rulesBySymbol,
+			rotationMapsByDegrees
 		);
 		const next = applyComponentWithMask(
 			rows,
@@ -511,7 +572,9 @@ function resolveStructureWithMask(
 			componentResolved.componentSources,
 			component,
 			transparentSymbols,
-			applySymbolOverride
+			applySymbolOverride,
+			rulesBySymbol,
+			rotationMapsByDegrees
 		);
 		rows = next.rows;
 		componentSources = next.componentSources;
@@ -541,6 +604,8 @@ export function resolveGlyphStructures(
 	const cache = new Map<string, string>();
 	const transparentSymbols = normalizeTransparentSymbols(options);
 	const applySymbolOverride = shouldApplySymbolOverride(options);
+	const rulesBySymbol = options?.rulesBySymbol;
+	const rotationMapsByDegrees = new Map<number, Map<string, string>>();
 	for (const glyph of glyphs) {
 		resolveStructureBody(
 			glyph.name,
@@ -549,7 +614,9 @@ export function resolveGlyphStructures(
 			new Set<string>(),
 			0,
 			transparentSymbols,
-			applySymbolOverride
+			applySymbolOverride,
+			rulesBySymbol,
+			rotationMapsByDegrees
 		);
 	}
 
@@ -570,6 +637,8 @@ export function resolveGlyphStructuresWithComponentMask(
 	const cache = new Map<string, ResolvedGlyphVisualData>();
 	const transparentSymbols = normalizeTransparentSymbols(options);
 	const applySymbolOverride = shouldApplySymbolOverride(options);
+	const rulesBySymbol = options?.rulesBySymbol;
+	const rotationMapsByDegrees = new Map<number, Map<string, string>>();
 	for (const glyph of glyphs) {
 		resolveStructureWithMask(
 			glyph.name,
@@ -578,7 +647,9 @@ export function resolveGlyphStructuresWithComponentMask(
 			new Set<string>(),
 			0,
 			transparentSymbols,
-			applySymbolOverride
+			applySymbolOverride,
+			rulesBySymbol,
+			rotationMapsByDegrees
 		);
 	}
 

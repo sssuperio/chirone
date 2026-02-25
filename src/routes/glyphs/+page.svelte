@@ -30,7 +30,7 @@
 		serializeGlyphStructure,
 		type GlyphComponentRef
 	} from '$lib/GTL/structure';
-	import { reflectGlyphStructureBody } from '$lib/GTL/structureTransforms';
+	import { reflectGlyphStructureBody, rotateGlyphStructureBody } from '$lib/GTL/structureTransforms';
 
 	//
 
@@ -88,6 +88,15 @@
 	$: resolvedGlyphStructuresVisualData = resolveGlyphStructuresWithComponentMask($glyphs, {
 		transparentSymbols: [' ', '.'],
 		applySymbolOverride: false
+	});
+	$: resolvedGlyphStructuresTextForDisplay = resolveGlyphStructures($glyphs, {
+		transparentSymbols: [' ', '.'],
+		rulesBySymbol: getRulesBySymbol($syntaxes)
+	});
+	$: resolvedGlyphStructuresVisualDataForDisplay = resolveGlyphStructuresWithComponentMask($glyphs, {
+		transparentSymbols: [' ', '.'],
+		applySymbolOverride: false,
+		rulesBySymbol: getRulesBySymbol($syntaxes)
 	});
 	$: resolvedGlyphStructuresVisual = new Map(
 		Array.from(resolvedGlyphStructuresVisualData.entries()).map(([name, resolved]) => [
@@ -286,11 +295,11 @@
 	}
 
 	function getResolvedGlyphBody(glyph: GlyphInput): string {
-		return resolvedGlyphStructuresVisualData.get(glyph.name)?.body ?? getGlyphBody(glyph);
+		return resolvedGlyphStructuresVisualDataForDisplay.get(glyph.name)?.body ?? getGlyphBody(glyph);
 	}
 
 	function getResolvedGlyphComponentSources(glyph: GlyphInput): Array<Array<Array<string>>> {
-		return resolvedGlyphStructuresVisualData.get(glyph.name)?.componentSources ?? [];
+		return resolvedGlyphStructuresVisualDataForDisplay.get(glyph.name)?.componentSources ?? [];
 	}
 
 	function structureHasDesignMarks(structure: string): boolean {
@@ -301,7 +310,7 @@
 	}
 
 	function isGlyphDesigned(glyph: GlyphInput): boolean {
-		const resolved = resolvedGlyphStructuresVisualData.get(glyph.name)?.body ?? getGlyphBody(glyph);
+		const resolved = resolvedGlyphStructuresVisualDataForDisplay.get(glyph.name)?.body ?? getGlyphBody(glyph);
 		return structureHasDesignMarks(resolved);
 	}
 
@@ -314,7 +323,7 @@
 		if (!parsed.components.length) return glyph.structure;
 		return serializeGlyphStructure({
 			components: parsed.components,
-			body: resolvedGlyphStructuresText.get(glyph.name) ?? parsed.body
+			body: resolvedGlyphStructuresTextForDisplay.get(glyph.name) ?? parsed.body
 		});
 	}
 
@@ -549,6 +558,24 @@
 		touchGlyphs();
 	}
 
+	function rotateSelectedGlyphClockwise() {
+		if (!selectedGlyphData) return;
+		const parsed = parseGlyphStructure(selectedGlyphData.structure);
+		const rotationStep = 15;
+		const rotatedBody = rotateGlyphStructureBody(parsed.body, rotationStep, rulesBySymbol);
+		const rotatedComponents = parsed.components.map((component) => ({
+			...component,
+			rotation: normalizeComponentRotationInput(component.rotation + rotationStep)
+		}));
+
+		let nextStructure = replaceGlyphStructureBody(selectedGlyphData.structure, rotatedBody);
+		if (parsed.components.length) {
+			nextStructure = replaceGlyphStructureComponents(nextStructure, rotatedComponents);
+		}
+		selectedGlyphData.structure = nextStructure;
+		touchGlyphs();
+	}
+
 	function getFloatingToolbarSize(): { width: number; height: number } {
 		if (!floatingToolbarElement) {
 			return { width: 160, height: 220 };
@@ -643,6 +670,13 @@
 
 				const key = event.key;
 				const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+				const normalizedKey = key.toLowerCase();
+				if (plain && normalizedKey === 'r') {
+					event.preventDefault();
+					rotateSelectedGlyphClockwise();
+					return;
+				}
+
 				const symbolShortcutAllowed = !event.ctrlKey && !event.metaKey && !event.altKey;
 				const shortcutBrushSymbol = symbolShortcutAllowed
 					? resolveBrushShortcutSymbol(key, brushSymbols)
@@ -653,7 +687,6 @@
 					return;
 				}
 
-				const normalizedKey = key.toLowerCase();
 				if (plain && normalizedKey === 'z') {
 					event.preventDefault();
 					toggleZenMode();
@@ -1204,6 +1237,19 @@
 			>
 			<span>Flip U/D</span>
 			<span class="ml-auto text-[10px] text-slate-500">X</span>
+		</button>
+		<button
+			type="button"
+			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			title="Rotate 15° (R)"
+			on:click={rotateSelectedGlyphClockwise}
+			disabled={!selectedGlyphData}
+		>
+			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+				>R</span
+			>
+			<span>Rotate 15°</span>
+			<span class="ml-auto text-[10px] text-slate-500">R</span>
 		</button>
 		<button
 			type="button"

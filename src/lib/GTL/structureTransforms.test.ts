@@ -7,7 +7,12 @@ import {
 	orientationPropFixed,
 	type Rule
 } from '$lib/types';
-import { reflectGlyphStructureBody } from './structureTransforms';
+import {
+	mapDirectionalSymbolsForRotation,
+	reflectGlyphStructureBody,
+	rotateGlyphStructureBody,
+	replaceMappedSymbols
+} from './structureTransforms';
 
 function quarterRule(symbol: string, orientation: Orientation, squaring = 0.56): Rule {
 	return {
@@ -52,5 +57,44 @@ describe('reflectGlyphStructureBody', () => {
 		};
 
 		expect(reflectGlyphStructureBody('a', 'vertical', rulesBySymbol)).toBe('a');
+	});
+});
+
+describe('mapDirectionalSymbolsForRotation', () => {
+	it('maps quarter symbols clockwise for 90° rotation', () => {
+		const rulesBySymbol: Record<string, Rule> = {
+			a: quarterRule('a', Orientation.NE),
+			b: quarterRule('b', Orientation.SE),
+			c: quarterRule('c', Orientation.SW),
+			d: quarterRule('d', Orientation.NW)
+		};
+
+		const mapping = mapDirectionalSymbolsForRotation(rulesBySymbol, 90);
+		expect(replaceMappedSymbols('abcd', mapping)).toBe('bcda');
+	});
+
+	it('does not map when rotation is not cardinal', () => {
+		const rulesBySymbol: Record<string, Rule> = {
+			a: quarterRule('a', Orientation.NE),
+			b: quarterRule('b', Orientation.SE),
+			c: quarterRule('c', Orientation.SW),
+			d: quarterRule('d', Orientation.NW)
+		};
+
+		const mapping = mapDirectionalSymbolsForRotation(rulesBySymbol, 15);
+		expect(replaceMappedSymbols('abcd', mapping)).toBe('abcd');
+	});
+});
+
+describe('rotateGlyphStructureBody', () => {
+	it('rotates body clockwise and remaps directional symbols', () => {
+		const rulesBySymbol: Record<string, Rule> = {
+			a: quarterRule('a', Orientation.NE),
+			b: quarterRule('b', Orientation.SE),
+			c: quarterRule('c', Orientation.SW),
+			d: quarterRule('d', Orientation.NW)
+		};
+
+		expect(rotateGlyphStructureBody('a ', 90, rulesBySymbol)).toBe('b');
 	});
 });

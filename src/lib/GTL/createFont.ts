@@ -1,4 +1,4 @@
-import type { Syntax, GlyphInput } from '../types';
+import type { Syntax, GlyphInput, Rule } from '../types';
 import { ShapeKind } from '../types';
 import {
 	structureToArray,
@@ -229,10 +229,21 @@ export async function generateFont(
 		}
 	}
 
-	const resolvedGlyphStructures = resolveGlyphStructures(orderedGlyphs, { transparentSymbols });
+	const rulesBySymbol: Record<string, Rule> = {};
+	for (const rule of syntax.rules) {
+		if (rule.symbol?.length === 1 && !rulesBySymbol[rule.symbol]) {
+			rulesBySymbol[rule.symbol] = rule;
+		}
+	}
+
+	const resolvedGlyphStructures = resolveGlyphStructures(orderedGlyphs, {
+		transparentSymbols,
+		rulesBySymbol
+	});
 	const resolvedGlyphVisualStructures = resolveGlyphStructures(orderedGlyphs, {
 		transparentSymbols,
-		applySymbolOverride: false
+		applySymbolOverride: false,
+		rulesBySymbol
 	});
 
 	for (const g of orderedGlyphs) {
