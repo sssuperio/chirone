@@ -6,16 +6,16 @@
 
 	export let structure = '';
 	export let resolvedBody = '';
-export let resolvedComponentSources: Array<Array<Array<string>>> = [];
-export let brushes: Array<string> = [];
-export let rulesBySymbol: Record<string, Rule> = {};
-export let minRows = 12;
-export let minColumns = 12;
-export let showGrid = true;
+	export let resolvedComponentSources: Array<Array<Array<string>>> = [];
+	export let brushes: Array<string> = [];
+	export let rulesBySymbol: Record<string, Rule> = {};
+	export let minRows = 12;
+	export let minColumns = 12;
+	export let showGrid = true;
 
 	const dispatch = createEventDispatcher<{ change: { structure: string } }>();
 
-	let selectedBrush = '';
+	export let selectedBrush = '';
 	let drawingMode: 'paint' | 'erase' | null = null;
 	let activePointerId: number | null = null;
 	let lastPaintedCellKey = '';
@@ -219,68 +219,67 @@ export let showGrid = true;
 />
 
 <div class="h-full min-h-0 flex flex-col gap-3">
-		<div class="shrink-0 flex flex-wrap gap-2 bg-slate-100 p-2">
-			{#if availableBrushes.length}
-				{#each availableBrushes as symbol (symbol)}
-					{@const brushRule = rulesBySymbol[symbol]}
-						<button
-							type="button"
-							title={symbol}
-						class={`relative w-14 h-14 border font-mono text-sm ${
-							selectedBrush === symbol
-								? 'bg-amber-100 border-amber-500 ring-2 ring-amber-500 ring-offset-1 ring-offset-white hover:bg-amber-200'
-								: 'bg-white hover:bg-slate-200 border-slate-300'
-						}`}
-							on:click={() => (selectedBrush = symbol)}
+	<div class="shrink-0 flex flex-wrap gap-2 bg-slate-100 p-2">
+		{#if availableBrushes.length}
+			{#each availableBrushes as symbol (symbol)}
+				{@const brushRule = rulesBySymbol[symbol]}
+				<button
+					type="button"
+					title={symbol}
+							class={`relative w-14 h-14 border font-mono text-sm ${
+								selectedBrush === symbol
+									? 'bg-amber-100 border-amber-500 ring-2 ring-amber-500 ring-offset-1 ring-offset-white hover:bg-amber-200'
+									: 'bg-white hover:bg-slate-200 border-slate-300'
+							}`}
+					on:click={() => (selectedBrush = symbol)}
+				>
+					{#if brushRule && brushRule.shape.kind !== ShapeKind.Void}
+						<div class="relative h-full w-full text-pink-300">
+							<div class="absolute inset-[1px] rounded-sm bg-pink-100"></div>
+							<RuleShapePreview
+								rule={brushRule}
+								className="relative z-10 h-full w-full p-[1px]"
+							/>
+							<span
+								class="absolute inset-0 z-20 flex select-none items-center justify-center text-3xl font-black leading-none text-black"
+								>{symbol}</span
+							>
+						</div>
+					{:else}
+						<span class="z-20 select-none text-3xl font-black leading-none text-black"
+							>{symbol}</span
 						>
-						{#if brushRule && brushRule.shape.kind !== ShapeKind.Void}
-							<div class="relative w-full h-full">
-								<div class="absolute inset-[1px] rounded-sm bg-slate-100"></div>
-								<RuleShapePreview
-									rule={brushRule}
-									className="relative z-10 w-full h-full p-[1px]"
-								/>
-									<span
-										class="absolute inset-0 z-20 flex select-none items-center justify-center text-3xl font-black leading-none text-rose-400 mix-blend-difference"
-										>{symbol}</span
-									>
-								</div>
-							{:else}
-								<span
-									class="z-20 select-none text-3xl font-black leading-none text-rose-400 mix-blend-difference"
-									>{symbol}</span
-								>
-							{/if}
-							{#if selectedBrush === symbol}
-								<span
-									class="pointer-events-none absolute right-1 top-1 z-30 h-2.5 w-2.5 rounded-full bg-amber-500 shadow"
-								></span>
-							{/if}
-						</button>
-					{/each}
-				<p class="text-xs text-slate-500 font-mono">Alt o tasto destro: gomma</p>
-		{:else}
-			<p class="text-xs text-slate-500 font-mono">
-				Nessun simbolo disponibile dalla sintassi. Aggiungi simboli in Struttura glifo.
-			</p>
-		{/if}
+					{/if}
+					{#if selectedBrush === symbol}
+						<span
+							class="pointer-events-none absolute right-1 top-1 z-30 h-2.5 w-2.5 rounded-full bg-amber-500 shadow"
+						></span>
+					{/if}
+				</button>
+			{/each}
+			<p class="text-xs text-slate-500 font-mono">Alt o tasto destro: gomma</p>
+			{:else}
+				<p class="text-xs text-slate-500 font-mono">
+					Nessun simbolo disponibile dalla sintassi. Aggiungi simboli in Struttura glifo.
+				</p>
+			{/if}
 	</div>
 
-		{#if showGrid}
-			<div class="h-0 grow min-h-0 bg-slate-100 p-2 overflow-auto" style="touch-action: none;">
-				<div
-					class="grid w-max border border-slate-300 bg-white"
-					style={`grid-template-columns: repeat(${gridColumns}, 2rem);`}
-				>
-					{#each Array.from({ length: gridRows }) as _, row}
-						{#each Array.from({ length: gridColumns }) as __, col}
-								{@const cellValue = gridMatrix[row][col]}
-								{@const componentSources = componentSourceMatrix[row][col]}
-								{@const isComponentCell = componentSources.length > 0}
-								{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
-							<button
-								type="button"
-								data-grid-cell="true"
+	{#if showGrid}
+		<div class="h-0 grow min-h-0 overflow-auto bg-slate-100 p-2" style="touch-action: none;">
+			<div
+				class="grid w-max border border-slate-300 bg-white"
+				style={`grid-template-columns: repeat(${gridColumns}, 2rem);`}
+			>
+				{#each Array.from({ length: gridRows }) as _, row}
+					{#each Array.from({ length: gridColumns }) as __, col}
+						{@const cellValue = gridMatrix[row][col]}
+						{@const componentSources = componentSourceMatrix[row][col]}
+						{@const isComponentCell = componentSources.length > 0}
+						{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
+								<button
+									type="button"
+									data-grid-cell="true"
 								data-row={row}
 								data-col={col}
 								style={`touch-action: none;${componentColor ? ` color: ${componentColor};` : ''}`}
@@ -296,22 +295,22 @@ export let showGrid = true;
 											<span class={isComponentCell ? 'font-mono' : 'text-slate-500 font-mono'}
 												>{cellValue}</span
 											>
-											{:else}
-												<div class="relative w-full h-full">
-													<div class="absolute inset-[2px] rounded-sm bg-slate-100"></div>
-													<RuleShapePreview
-														rule={rulesBySymbol[cellValue]}
-														className="relative z-10 w-full h-full p-1"
-													/>
-												</div>
-											{/if}
+										{:else}
+											<div class="relative h-full w-full">
+												<div class="absolute inset-[2px] rounded-sm bg-slate-100"></div>
+												<RuleShapePreview
+													rule={rulesBySymbol[cellValue]}
+													className="relative z-10 h-full w-full p-1"
+												/>
+											</div>
+										{/if}
 									{:else}
-									<span class={isComponentCell ? '' : 'text-red-400'}>•</span>
-								{/if}
-							</button>
-						{/each}
+										<span class={isComponentCell ? '' : 'text-red-400'}>•</span>
+									{/if}
+								</button>
 					{/each}
-				</div>
+				{/each}
 			</div>
-		{/if}
-	</div>
+		</div>
+	{/if}
+</div>

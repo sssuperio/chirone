@@ -14,7 +14,6 @@
 	import DeleteButton from '$lib/ui/deleteButton.svelte';
 	import AddGlyphModal from './AddGlyphModal.svelte';
 	import AddGlyphSetModal from './AddGlyphSetModal.svelte';
-	import { UNICODE } from '$lib/GTL/unicode';
 	import { resolveUnicodeNumber } from '$lib/GTL/glyphName';
 	import {
 		getGlyphSetByID,
@@ -462,6 +461,7 @@
 	let newComponentRotation = 0;
 	let selectedGlyphSetFilter = 'all';
 	let showOnlyUndesignedGlyphs = false;
+	let selectedBrushSymbol = '';
 
 	$: brushSymbols = getSyntaxSymbols($syntaxes);
 	$: rulesBySymbol = getRulesBySymbol($syntaxes);
@@ -492,6 +492,14 @@
 		const tagName = target.tagName.toLowerCase();
 		if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
 		return target.isContentEditable;
+	}
+
+	function resolveBrushShortcutSymbol(key: string, symbols: Array<string>): string | undefined {
+		if (key.length !== 1) return undefined;
+		if (symbols.includes(key)) return key;
+
+		const keyLower = key.toLowerCase();
+		return symbols.find((symbol) => symbol.length === 1 && symbol.toLowerCase() === keyLower);
 	}
 
 	function setZenMode(nextValue: boolean) {
@@ -628,52 +636,64 @@
 			syncDesignFullscreenState();
 		};
 
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (isTypingTarget(event.target)) return;
-			if (event.repeat) return;
+			const onKeyDown = (event: KeyboardEvent) => {
+				if (isTypingTarget(event.target)) return;
+				if (event.repeat) return;
+				if (event.defaultPrevented) return;
 
-			const key = event.key.toLowerCase();
-			const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
-			if (plain && key === 'z') {
-				event.preventDefault();
-				toggleZenMode();
-				return;
-			}
+				const key = event.key;
+				const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+				const symbolShortcutAllowed = !event.ctrlKey && !event.metaKey && !event.altKey;
+				const shortcutBrushSymbol = symbolShortcutAllowed
+					? resolveBrushShortcutSymbol(key, brushSymbols)
+					: undefined;
+				if (shortcutBrushSymbol) {
+					event.preventDefault();
+					selectedBrushSymbol = shortcutBrushSymbol;
+					return;
+				}
 
-			if (plain && key === 'f') {
-				event.preventDefault();
-				void toggleDesignFullscreen();
-				return;
-			}
+				const normalizedKey = key.toLowerCase();
+				if (plain && normalizedKey === 'z') {
+					event.preventDefault();
+					toggleZenMode();
+					return;
+				}
 
-			if (plain && key === 'v') {
-				event.preventDefault();
-				fillVoidSelectedGlyph();
-				return;
-			}
+				if (plain && normalizedKey === 'f') {
+					event.preventDefault();
+					void toggleDesignFullscreen();
+					return;
+				}
 
-			if (plain && key === 'm') {
-				event.preventDefault();
-				mirrorSelectedGlyphLeftRight();
-				return;
-			}
+				if (plain && normalizedKey === 'v') {
+					event.preventDefault();
+					fillVoidSelectedGlyph();
+					return;
+				}
 
-			if (plain && key === 'x') {
-				event.preventDefault();
-				flipSelectedGlyphTopBottom();
-				return;
-			}
+				if (plain && normalizedKey === 'm') {
+					event.preventDefault();
+					mirrorSelectedGlyphLeftRight();
+					return;
+				}
 
-			if (plain && key === 'c') {
-				event.preventDefault();
-				clearSelectedGlyphDesign();
-				return;
-			}
+				if (plain && normalizedKey === 'x') {
+					event.preventDefault();
+					flipSelectedGlyphTopBottom();
+					return;
+				}
 
-			if (key === 'escape' && isZenMode) {
-				event.preventDefault();
-				setZenMode(false);
-			}
+				if (plain && normalizedKey === 'c') {
+					event.preventDefault();
+					clearSelectedGlyphDesign();
+					return;
+				}
+
+				if (normalizedKey === 'escape' && isZenMode) {
+					event.preventDefault();
+					setZenMode(false);
+				}
 		};
 
 		document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -742,10 +762,7 @@
 						</p>
 					{/if}
 					{#each filteredGlyphs as g (g.id)}
-						{@const glyphString = getGlyphString(g.name)}
-						{@const glyphHex = getGlyphUnicodeHex(g.name)}
 						{@const glyphPreviewSymbols = getMiniGlyphPreviewSymbols(getResolvedGlyphBody(g))}
-						{@const glyphSet = getGlyphSetByID(getGlyphSetID(g))}
 						{@const designed = isGlyphDesigned(g)}
 						<SidebarTile selection={selectedGlyph} id={g.id}>
 							<div class="flex items-start justify-between gap-2">
@@ -771,16 +788,7 @@
 									</div>
 
 									<div class="min-w-0">
-										<div class="truncate">
-											{#if glyphString}
-												<span class="mr-1">{glyphString}</span>
-											{/if}
-											{#if glyphHex}
-												<span class="opacity-70">U+{glyphHex}</span>
-											{/if}
-											<span class="opacity-90"> {g.name}</span>
-										</div>
-										<div class="truncate opacity-50">[{glyphSet.label}]</div>
+										<div class="truncate opacity-90">{g.name}</div>
 									</div>
 								</div>
 								<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
@@ -798,8 +806,10 @@
 	<div class={`grow flex flex-col items-stretch ${isZenMode ? 'p-2 space-y-2' : 'p-8 space-y-8'}`}>
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
+				{@const designed = isGlyphDesigned(g)}
 				{@const glyphString = getGlyphString(g.name)}
-				{@const glyphName = UNICODE[g.name]}
+				{@const glyphHex = getGlyphUnicodeHex(g.name)}
+				{@const glyphSet = getGlyphSetByID(getGlyphSetID(g))}
 				{@const componentGlyphs = getAvailableComponentGlyphs(g.name)}
 				{@const glyphComponents = getGlyphComponents(g)}
 				{@const resolvedGlyphBody = getResolvedGlyphBody(g)}
@@ -811,321 +821,322 @@
 					1,
 					...glyphStructureLines.map((line) => line.length)
 				)}
-					{#if !isZenMode}
-						<div class="shrink-0 flex justify-between items-center">
-							<div class="flex gap-4">
-								{#if glyphString}
-									<div class="w-12 h-12 flex items-center justify-center border-black text-xl border">
-										<p>{glyphString}</p>
-									</div>
-								{/if}
-								<div class="text-gray-400">
-									<p>{g.name}</p>
-									{#if glyphName}
-										<p>
-											{glyphName}
+				{#if !isZenMode}
+					<div class="shrink-0 flex justify-between items-center gap-4">
+						<div class="min-w-0 flex items-center gap-3">
+							<div class="flex items-center gap-2 text-lg">
+								<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
+									{designed ? '●' : '○'}
+								</span>
+								<p class="text-slate-700">{g.name}</p>
+							</div>
+							{#if glyphString}
+								<span class="text-slate-600">{glyphString}</span>
+							{/if}
+							{#if glyphHex}
+								<span class="text-sm text-slate-500">U+{glyphHex}</span>
+							{/if}
+							<span class="text-sm text-slate-500">[{glyphSet.label}]</span>
+						</div>
+						<DeleteButton on:delete={handleDelete} />
+					</div>
+					<hr />
+				{/if}
+				<div
+					bind:this={designWorkspaceElement}
+					class={`h-0 grow min-h-0 flex gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
+				>
+					<div class="min-h-0 min-w-0 flex-1 flex flex-col gap-2">
+						<div class="h-0 grow min-h-0 flex flex-col">
+							<div class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
+								<button
+									type="button"
+									class={`px-3 py-2 text-sm font-mono ${
+										activeGlyphEditorTab === 'visualDesign'
+											? 'bg-slate-800 text-white'
+											: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+									}`}
+									aria-pressed={activeGlyphEditorTab === 'visualDesign'}
+									on:click={() => {
+										activeGlyphEditorTab = 'visualDesign';
+									}}
+								>
+									Visual design
+								</button>
+								<button
+									type="button"
+									class={`px-3 py-2 text-sm font-mono ${
+										activeGlyphEditorTab === 'glyphStructure'
+											? 'bg-slate-800 text-white'
+											: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+									}`}
+									aria-pressed={activeGlyphEditorTab === 'glyphStructure'}
+									on:click={() => {
+										activeGlyphEditorTab = 'glyphStructure';
+									}}
+									>
+										Glyph structure
+									</button>
+								</div>
+				
+								<div
+									class="mb-2 p-2 border border-slate-300 bg-slate-50 space-y-2 font-mono text-xs"
+								>
+									<p class="text-slate-900">
+										Componenti ({glyphComponents.length})
+									</p>
+				
+									{#if componentGlyphs.length}
+										<div class="flex flex-wrap items-end gap-2">
+											<div class="flex flex-col gap-1">
+												<label class="text-slate-500" for="component-name-select">Nome</label>
+												<select
+													id="component-name-select"
+													class="h-10 bg-slate-200 px-2"
+													bind:value={newComponentName}
+												>
+													{#each componentGlyphs as componentGlyph (componentGlyph.id)}
+														<option value={componentGlyph.name}>{componentGlyph.name}</option>
+													{/each}
+												</select>
+											</div>
+											<div class="flex flex-col gap-1">
+												<label class="text-slate-500" for="component-symbol-input"
+													>Simbolo</label
+												>
+												<input
+													id="component-symbol-input"
+													class="h-10 w-16 bg-slate-200 px-2"
+													type="text"
+													maxlength="2"
+													bind:value={newComponentSymbol}
+												/>
+											</div>
+											<div class="flex flex-col gap-1">
+												<label class="text-slate-500" for="component-x-input">x</label>
+												<input
+													id="component-x-input"
+													class="h-10 w-16 bg-slate-200 px-2"
+													type="number"
+													min="1"
+													step="1"
+													bind:value={newComponentX}
+												/>
+											</div>
+											<div class="flex flex-col gap-1">
+												<label class="text-slate-500" for="component-y-input">y</label>
+												<input
+													id="component-y-input"
+													class="h-10 w-16 bg-slate-200 px-2"
+													type="number"
+													min="1"
+													step="1"
+													bind:value={newComponentY}
+												/>
+											</div>
+											<div class="flex flex-col gap-1">
+												<label class="text-slate-500" for="component-rotation-input"
+													>rot°</label
+												>
+												<input
+													id="component-rotation-input"
+													class="h-10 w-20 bg-slate-200 px-2"
+													type="number"
+													step="15"
+													bind:value={newComponentRotation}
+												/>
+											</div>
+											<Button on:click={() => addComponentReference(g)}
+												>+ Aggiungi componente</Button
+											>
+										</div>
+									{:else}
+										<p class="text-slate-500">
+											Nessun glifo `.component` disponibile. Crea un glifo come
+											`etom.component`.
 										</p>
+									{/if}
+				
+									{#if glyphComponents.length}
+										<div class="space-y-1">
+											{#each glyphComponents as component, index (`${component.name}:${index}`)}
+												<div
+													class="flex items-center justify-between gap-2 border border-slate-200 bg-white px-2 py-1"
+												>
+													<div class="flex items-center gap-2 text-[11px]">
+														<p class="truncate w-32">{component.name}</p>
+														<label class="flex items-center gap-1">
+															<span>s</span>
+															<input
+																class="w-10 h-7 border border-slate-300 px-1"
+																type="text"
+																maxlength="2"
+																value={component.symbol}
+																on:input={(event) => {
+																	updateComponentReference(g, index, {
+																		symbol: inputValue(event)
+																	});
+																}}
+																on:change={(event) => {
+																	updateComponentReference(g, index, {
+																		symbol: inputValue(event)
+																	});
+																}}
+																on:blur={(event) => {
+																	updateComponentReference(g, index, {
+																		symbol: inputValue(event)
+																	});
+																}}
+															/>
+														</label>
+														<label class="flex items-center gap-1">
+															<span>x</span>
+															<input
+																class="w-12 h-7 border border-slate-300 px-1"
+																type="number"
+																min="1"
+																step="1"
+																value={component.x}
+																on:input={(event) => {
+																	updateComponentReference(g, index, {
+																		x: inputNumericValue(event)
+																	});
+																}}
+																on:change={(event) => {
+																	updateComponentReference(g, index, {
+																		x: inputNumericValue(event)
+																	});
+																}}
+																on:blur={(event) => {
+																	updateComponentReference(g, index, {
+																		x: inputNumericValue(event)
+																	});
+																}}
+															/>
+														</label>
+														<label class="flex items-center gap-1">
+															<span>y</span>
+															<input
+																class="w-12 h-7 border border-slate-300 px-1"
+																type="number"
+																min="1"
+																step="1"
+																value={component.y}
+																on:input={(event) => {
+																	updateComponentReference(g, index, {
+																		y: inputNumericValue(event)
+																	});
+																}}
+																on:change={(event) => {
+																	updateComponentReference(g, index, {
+																		y: inputNumericValue(event)
+																	});
+																}}
+																on:blur={(event) => {
+																	updateComponentReference(g, index, {
+																		y: inputNumericValue(event)
+																	});
+																}}
+															/>
+														</label>
+														<label class="flex items-center gap-1">
+															<span>rot</span>
+															<input
+																class="w-16 h-7 border border-slate-300 px-1"
+																type="number"
+																step="15"
+																value={component.rotation}
+																on:input={(event) => {
+																	updateComponentReference(g, index, {
+																		rotation: inputNumericValue(event)
+																	});
+																}}
+																on:change={(event) => {
+																	updateComponentReference(g, index, {
+																		rotation: inputNumericValue(event)
+																	});
+																}}
+																on:blur={(event) => {
+																	updateComponentReference(g, index, {
+																		rotation: inputNumericValue(event)
+																	});
+																}}
+															/>
+														</label>
+													</div>
+													<button
+														type="button"
+														class="text-red-600 hover:text-red-800"
+														on:click={() => removeComponentReference(g, index)}
+													>
+														rimuovi
+													</button>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+			
+								<div class="h-0 grow min-h-0 flex flex-col gap-2">
+									<div
+										class={activeGlyphEditorTab === 'visualDesign'
+											? 'h-0 grow min-h-0'
+											: 'shrink-0'}
+									>
+												<GlyphPainter
+													bind:structure={g.structure}
+													bind:selectedBrush={selectedBrushSymbol}
+													resolvedBody={resolvedGlyphBody}
+													resolvedComponentSources={resolvedGlyphComponentSources}
+													brushes={brushSymbols}
+											{rulesBySymbol}
+											showGrid={activeGlyphEditorTab === 'visualDesign'}
+											on:change={scheduleTouchGlyphs}
+										/>
+									</div>
+			
+									{#if activeGlyphEditorTab === 'glyphStructure'}
+										<div class="h-0 grow min-h-0 flex flex-col gap-1">
+											<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
+												<span>rows: 1..{glyphStructureLineCount}</span>
+												<span>cols: 1..{glyphStructureColumnCount}</span>
+											</div>
+											<textarea
+												class="h-0 grow min-h-0 p-2 bg-slate-200 hover:bg-slate-300 font-mono text-xl focus:ring-4"
+												value={glyphStructureValue}
+												wrap="off"
+												spellcheck="false"
+												on:input={(event) => {
+													handleGlyphStructureInput(g, inputValue(event));
+												}}
+											/>
+										</div>
 									{/if}
 								</div>
 							</div>
-							<DeleteButton on:delete={handleDelete} />
 						</div>
-						<hr />
-					{/if}
+			
 						<div
-							bind:this={designWorkspaceElement}
-							class={`h-0 grow min-h-0 flex gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
+							class={`min-h-0 min-w-0 flex flex-col bg-slate-50 ${
+								isZenMode
+									? 'flex-[0_0_42%] border-l border-slate-300 pl-2'
+									: 'flex-1 lg:border-l lg:border-slate-300 lg:pl-4'
+							}`}
 						>
-								<div class="min-h-0 min-w-0 flex-1 flex flex-col gap-2">
-								<div class="h-0 grow min-h-0 flex flex-col">
-									<div class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
-										<button
-											type="button"
-											class={`px-3 py-2 text-sm font-mono ${
-											activeGlyphEditorTab === 'visualDesign'
-												? 'bg-slate-800 text-white'
-												: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-										}`}
-										aria-pressed={activeGlyphEditorTab === 'visualDesign'}
-										on:click={() => {
-											activeGlyphEditorTab = 'visualDesign';
-										}}
-									>
-										Visual design
-									</button>
-									<button
-										type="button"
-										class={`px-3 py-2 text-sm font-mono ${
-											activeGlyphEditorTab === 'glyphStructure'
-												? 'bg-slate-800 text-white'
-												: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-										}`}
-										aria-pressed={activeGlyphEditorTab === 'glyphStructure'}
-										on:click={() => {
-											activeGlyphEditorTab = 'glyphStructure';
-										}}
-										>
-											Glyph structure
-										</button>
-									</div>
-
-									<div
-										class="mb-2 p-2 border border-slate-300 bg-slate-50 space-y-2 font-mono text-xs"
-									>
-										<p class="text-slate-900">
-											Componenti ({glyphComponents.length})
-										</p>
-
-										{#if componentGlyphs.length}
-											<div class="flex flex-wrap items-end gap-2">
-												<div class="flex flex-col gap-1">
-													<label class="text-slate-500" for="component-name-select">Nome</label>
-													<select
-														id="component-name-select"
-														class="h-10 bg-slate-200 px-2"
-														bind:value={newComponentName}
-													>
-														{#each componentGlyphs as componentGlyph (componentGlyph.id)}
-															<option value={componentGlyph.name}>{componentGlyph.name}</option>
-														{/each}
-													</select>
-												</div>
-												<div class="flex flex-col gap-1">
-													<label class="text-slate-500" for="component-symbol-input"
-														>Simbolo</label
-													>
-													<input
-														id="component-symbol-input"
-														class="h-10 w-16 bg-slate-200 px-2"
-														type="text"
-														maxlength="2"
-														bind:value={newComponentSymbol}
-													/>
-												</div>
-												<div class="flex flex-col gap-1">
-													<label class="text-slate-500" for="component-x-input">x</label>
-													<input
-														id="component-x-input"
-														class="h-10 w-16 bg-slate-200 px-2"
-														type="number"
-														min="1"
-														step="1"
-														bind:value={newComponentX}
-													/>
-												</div>
-												<div class="flex flex-col gap-1">
-													<label class="text-slate-500" for="component-y-input">y</label>
-													<input
-														id="component-y-input"
-														class="h-10 w-16 bg-slate-200 px-2"
-														type="number"
-														min="1"
-														step="1"
-														bind:value={newComponentY}
-													/>
-												</div>
-												<div class="flex flex-col gap-1">
-													<label class="text-slate-500" for="component-rotation-input"
-														>rot°</label
-													>
-													<input
-														id="component-rotation-input"
-														class="h-10 w-20 bg-slate-200 px-2"
-														type="number"
-														step="15"
-														bind:value={newComponentRotation}
-													/>
-												</div>
-												<Button on:click={() => addComponentReference(g)}
-													>+ Aggiungi componente</Button
-												>
-											</div>
-										{:else}
-											<p class="text-slate-500">
-												Nessun glifo `.component` disponibile. Crea un glifo come
-												`etom.component`.
-											</p>
-										{/if}
-
-										{#if glyphComponents.length}
-											<div class="space-y-1">
-												{#each glyphComponents as component, index (`${component.name}:${index}`)}
-													<div
-														class="flex items-center justify-between gap-2 border border-slate-200 bg-white px-2 py-1"
-													>
-														<div class="flex items-center gap-2 text-[11px]">
-															<p class="truncate w-32">{component.name}</p>
-															<label class="flex items-center gap-1">
-																<span>s</span>
-																<input
-																	class="w-10 h-7 border border-slate-300 px-1"
-																	type="text"
-																	maxlength="2"
-																	value={component.symbol}
-																	on:input={(event) => {
-																		updateComponentReference(g, index, {
-																			symbol: inputValue(event)
-																		});
-																	}}
-																	on:change={(event) => {
-																		updateComponentReference(g, index, {
-																			symbol: inputValue(event)
-																		});
-																	}}
-																	on:blur={(event) => {
-																		updateComponentReference(g, index, {
-																			symbol: inputValue(event)
-																		});
-																	}}
-																/>
-															</label>
-															<label class="flex items-center gap-1">
-																<span>x</span>
-																<input
-																	class="w-12 h-7 border border-slate-300 px-1"
-																	type="number"
-																	min="1"
-																	step="1"
-																	value={component.x}
-																	on:input={(event) => {
-																		updateComponentReference(g, index, {
-																			x: inputNumericValue(event)
-																		});
-																	}}
-																	on:change={(event) => {
-																		updateComponentReference(g, index, {
-																			x: inputNumericValue(event)
-																		});
-																	}}
-																	on:blur={(event) => {
-																		updateComponentReference(g, index, {
-																			x: inputNumericValue(event)
-																		});
-																	}}
-																/>
-															</label>
-															<label class="flex items-center gap-1">
-																<span>y</span>
-																<input
-																	class="w-12 h-7 border border-slate-300 px-1"
-																	type="number"
-																	min="1"
-																	step="1"
-																	value={component.y}
-																	on:input={(event) => {
-																		updateComponentReference(g, index, {
-																			y: inputNumericValue(event)
-																		});
-																	}}
-																	on:change={(event) => {
-																		updateComponentReference(g, index, {
-																			y: inputNumericValue(event)
-																		});
-																	}}
-																	on:blur={(event) => {
-																		updateComponentReference(g, index, {
-																			y: inputNumericValue(event)
-																		});
-																	}}
-																/>
-															</label>
-															<label class="flex items-center gap-1">
-																<span>rot</span>
-																<input
-																	class="w-16 h-7 border border-slate-300 px-1"
-																	type="number"
-																	step="15"
-																	value={component.rotation}
-																	on:input={(event) => {
-																		updateComponentReference(g, index, {
-																			rotation: inputNumericValue(event)
-																		});
-																	}}
-																	on:change={(event) => {
-																		updateComponentReference(g, index, {
-																			rotation: inputNumericValue(event)
-																		});
-																	}}
-																	on:blur={(event) => {
-																		updateComponentReference(g, index, {
-																			rotation: inputNumericValue(event)
-																		});
-																	}}
-																/>
-															</label>
-														</div>
-														<button
-															type="button"
-															class="text-red-600 hover:text-red-800"
-															on:click={() => removeComponentReference(g, index)}
-														>
-															rimuovi
-														</button>
-													</div>
-												{/each}
-											</div>
-										{/if}
-									</div>
-
-									<div class="h-0 grow min-h-0 flex flex-col gap-2">
-										<div
-											class={activeGlyphEditorTab === 'visualDesign'
-												? 'h-0 grow min-h-0'
-												: 'shrink-0'}
-										>
-											<GlyphPainter
-												bind:structure={g.structure}
-												resolvedBody={resolvedGlyphBody}
-												resolvedComponentSources={resolvedGlyphComponentSources}
-												brushes={brushSymbols}
-												{rulesBySymbol}
-												showGrid={activeGlyphEditorTab === 'visualDesign'}
-												on:change={scheduleTouchGlyphs}
-											/>
-										</div>
-
-										{#if activeGlyphEditorTab === 'glyphStructure'}
-											<div class="h-0 grow min-h-0 flex flex-col gap-1">
-												<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
-													<span>rows: 1..{glyphStructureLineCount}</span>
-													<span>cols: 1..{glyphStructureColumnCount}</span>
-												</div>
-												<textarea
-													class="h-0 grow min-h-0 p-2 bg-slate-200 hover:bg-slate-300 font-mono text-xl focus:ring-4"
-													value={glyphStructureValue}
-													wrap="off"
-													spellcheck="false"
-													on:input={(event) => {
-														handleGlyphStructureInput(g, inputValue(event));
-													}}
-												/>
-											</div>
-										{/if}
-									</div>
-								</div>
-							</div>
-
-								<div
-									class={`min-h-0 min-w-0 flex flex-col bg-slate-50 ${
-										isZenMode
-											? 'flex-[0_0_42%] border-l border-slate-300 pl-2'
-											: 'flex-1 lg:border-l lg:border-slate-300 lg:pl-4'
-									}`}
-								>
-								<p class="text-small font-mono text-slate-900 mb-2 text-sm">
-									Anteprima e metriche
-								</p>
-								<div class="h-0 grow min-h-0 overflow-y-auto overflow-x-hidden">
-									<GlyphPreview
-										canvasHeight={previewCanvasHeight}
-										showTitle={false}
-										showLegend={false}
-									/>
+							<p class="text-small font-mono text-slate-900 mb-2 text-sm">
+								Anteprima e metriche
+							</p>
+							<div class="h-0 grow min-h-0 overflow-y-auto overflow-x-hidden">
+								<GlyphPreview
+									canvasHeight={previewCanvasHeight}
+									showTitle={false}
+									showLegend={false}
+								/>
 							</div>
 						</div>
 					</div>
 				{/if}
-				{/each}
+			{/each}
 	</div>
 </div>
 
