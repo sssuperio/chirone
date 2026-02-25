@@ -27,6 +27,7 @@
 		replaceGlyphStructureComponents,
 		resolveGlyphStructures,
 		resolveGlyphStructuresWithComponentMask,
+		serializeGlyphStructure,
 		type GlyphComponentRef
 	} from '$lib/GTL/structure';
 	import {
@@ -96,6 +97,10 @@
 	});
 	$: resolvedGlyphStructuresTextForDisplay = resolveGlyphStructures($glyphs, {
 		transparentSymbols: [' ', '.'],
+		rulesBySymbol: getRulesBySymbol($syntaxes)
+	});
+	$: resolvedGlyphStructuresComponentSymbolTextForDisplay = resolveGlyphStructures($glyphs, {
+		transparentSymbols: [' '],
 		rulesBySymbol: getRulesBySymbol($syntaxes)
 	});
 	$: resolvedGlyphStructuresVisualDataForDisplay = resolveGlyphStructuresWithComponentMask($glyphs, {
@@ -324,11 +329,19 @@
 	}
 
 	function getGlyphStructureTextareaValue(glyph: GlyphInput): string {
-		return glyph.structure;
+		return parseGlyphStructure(glyph.structure).body;
+	}
+
+	function getGlyphStructureComponentSymbolViewValue(glyph: GlyphInput): string {
+		const parsed = parseGlyphStructure(glyph.structure);
+		return serializeGlyphStructure({
+			components: parsed.components,
+			body: resolvedGlyphStructuresComponentSymbolTextForDisplay.get(glyph.name) ?? parsed.body
+		});
 	}
 
 	function handleGlyphStructureInput(glyph: GlyphInput, nextValue: string) {
-		glyph.structure = nextValue;
+		glyph.structure = replaceGlyphStructureBody(glyph.structure, nextValue);
 		scheduleTouchGlyphs();
 	}
 
@@ -850,8 +863,9 @@
 				{@const glyphComponents = getGlyphComponents(g)}
 				{@const resolvedGlyphBody = getResolvedGlyphBody(g)}
 				{@const resolvedGlyphComponentSources = getResolvedGlyphComponentSources(g)}
-				{@const glyphStructureValue = getGlyphStructureTextareaValue(g)}
-				{@const glyphStructureLines = glyphStructureValue ? glyphStructureValue.split(/\r?\n/) : ['']}
+					{@const glyphStructureValue = getGlyphStructureTextareaValue(g)}
+					{@const glyphStructureComponentSymbolViewValue = getGlyphStructureComponentSymbolViewValue(g)}
+					{@const glyphStructureLines = glyphStructureValue ? glyphStructureValue.split(/\r?\n/) : ['']}
 				{@const glyphStructureLineCount = Math.max(1, glyphStructureLines.length)}
 				{@const glyphStructureColumnCount = Math.max(
 					1,
@@ -1131,23 +1145,45 @@
 										/>
 									</div>
 			
-									{#if activeGlyphEditorTab === 'glyphStructure'}
-										<div class="h-0 grow min-h-0 flex flex-col gap-1">
-											<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
-												<span>rows: 1..{glyphStructureLineCount}</span>
-												<span>cols: 1..{glyphStructureColumnCount}</span>
+											{#if activeGlyphEditorTab === 'glyphStructure'}
+												<div
+													class={`grow min-h-0 h-full flex flex-col gap-2 ${
+														glyphComponents.length ? 'xl:flex-row' : ''
+													}`}
+												>
+													<div class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
+														<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
+															<span>rows: 1..{glyphStructureLineCount}</span>
+															<span>cols: 1..{glyphStructureColumnCount}</span>
+														</div>
+														<textarea
+															class="grow min-h-0 h-full p-2 bg-slate-200 hover:bg-slate-300 font-mono text-xl focus:ring-4"
+															value={glyphStructureValue}
+															wrap="off"
+															spellcheck="false"
+															on:input={(event) => {
+																handleGlyphStructureInput(g, inputValue(event));
+														}}
+													/>
+												</div>
+
+													{#if glyphComponents.length}
+														<div class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
+															<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
+																<span>Component symbol map</span>
+																<span>read-only</span>
+															</div>
+															<textarea
+																class="grow min-h-0 h-full p-2 bg-slate-100 font-mono text-xl text-slate-700"
+																value={glyphStructureComponentSymbolViewValue}
+																wrap="off"
+																spellcheck="false"
+																readonly
+															/>
+													</div>
+												{/if}
 											</div>
-											<textarea
-												class="h-0 grow min-h-0 p-2 bg-slate-200 hover:bg-slate-300 font-mono text-xl focus:ring-4"
-												value={glyphStructureValue}
-												wrap="off"
-												spellcheck="false"
-												on:input={(event) => {
-													handleGlyphStructureInput(g, inputValue(event));
-												}}
-											/>
-										</div>
-									{/if}
+										{/if}
 								</div>
 							</div>
 						</div>
