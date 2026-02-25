@@ -240,7 +240,7 @@ export async function generateFont(
 		transparentSymbols,
 		rulesBySymbol
 	});
-	const resolvedGlyphVisualStructures = resolveGlyphStructures(orderedGlyphs, {
+	const resolvedGlyphRenderStructures = resolveGlyphStructures(orderedGlyphs, {
 		transparentSymbols,
 		applySymbolOverride: false,
 		rulesBySymbol
@@ -248,7 +248,7 @@ export async function generateFont(
 
 	for (const g of orderedGlyphs) {
 		const resolvedStructure =
-			resolvedGlyphVisualStructures.get(g.name) ??
+			resolvedGlyphRenderStructures.get(g.name) ??
 			resolvedGlyphStructures.get(g.name) ??
 			parseGlyphStructure(g.structure).body;
 		opentypeGlyphs.push(

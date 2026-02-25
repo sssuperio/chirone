@@ -168,12 +168,17 @@ function parseFrontmatter(frontmatter: string | undefined): Array<GlyphComponent
 function splitStructure(raw: string): { frontmatter: string | undefined; body: string } {
 	const normalized = normalizeLineEndings(raw ?? '');
 	const lines = normalized.split('\n');
-	if (!lines.length || lines[0].trim() !== FRONTMATTER_SEPARATOR) {
+	if (!lines.length) {
+		return { frontmatter: undefined, body: normalized };
+	}
+
+	const firstContentIndex = lines.findIndex((line) => line.trim() !== '');
+	if (firstContentIndex === -1 || lines[firstContentIndex].trim() !== FRONTMATTER_SEPARATOR) {
 		return { frontmatter: undefined, body: normalized };
 	}
 
 	let closingIndex = -1;
-	for (let i = 1; i < lines.length; i++) {
+	for (let i = firstContentIndex + 1; i < lines.length; i++) {
 		if (lines[i].trim() === FRONTMATTER_SEPARATOR) {
 			closingIndex = i;
 			break;
@@ -185,7 +190,7 @@ function splitStructure(raw: string): { frontmatter: string | undefined; body: s
 	}
 
 	return {
-		frontmatter: lines.slice(1, closingIndex).join('\n'),
+		frontmatter: lines.slice(firstContentIndex + 1, closingIndex).join('\n'),
 		body: lines.slice(closingIndex + 1).join('\n')
 	};
 }

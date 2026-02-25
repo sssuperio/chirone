@@ -27,7 +27,6 @@
 		replaceGlyphStructureComponents,
 		resolveGlyphStructures,
 		resolveGlyphStructuresWithComponentMask,
-		serializeGlyphStructure,
 		type GlyphComponentRef
 	} from '$lib/GTL/structure';
 	import {
@@ -325,29 +324,11 @@
 	}
 
 	function getGlyphStructureTextareaValue(glyph: GlyphInput): string {
-		const parsed = parseGlyphStructure(glyph.structure);
-		if (!parsed.components.length) return glyph.structure;
-		return serializeGlyphStructure({
-			components: parsed.components,
-			body: resolvedGlyphStructuresTextForDisplay.get(glyph.name) ?? parsed.body
-		});
+		return glyph.structure;
 	}
 
 	function handleGlyphStructureInput(glyph: GlyphInput, nextValue: string) {
-		const currentParsed = parseGlyphStructure(glyph.structure);
-		const nextParsed = parseGlyphStructure(nextValue);
-
-		if (!currentParsed.components.length) {
-			glyph.structure = nextValue;
-			scheduleTouchGlyphs();
-			return;
-		}
-
-		const nextBody = nextParsed.components.length ? currentParsed.body : nextParsed.body;
-		glyph.structure = serializeGlyphStructure({
-			components: nextParsed.components,
-			body: nextBody
-		});
+		glyph.structure = nextValue;
 		scheduleTouchGlyphs();
 	}
 

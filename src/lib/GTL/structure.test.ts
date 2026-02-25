@@ -9,6 +9,7 @@ import {
 	type Rule
 } from '$lib/types';
 import {
+	parseGlyphStructure,
 	resolveGlyphStructures,
 	resolveGlyphStructuresWithComponentMask,
 	serializeGlyphStructure
@@ -153,5 +154,112 @@ describe('resolveGlyphStructures layering', () => {
 		expect(targetVisual?.body).toBe('az');
 		expect(targetVisual?.componentSources[0]?.[0]).toContain('part.component');
 		expect(targetVisual?.componentSources[0]?.[1]).toContain('part.component');
+	});
+
+	it('keeps component references live when overlay overrides single cells', () => {
+		const target: GlyphInput = {
+			id: 'target',
+			name: 'target',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'i.component', symbol: 'i', x: 1, y: 1, rotation: 0 }],
+				body: ' .'
+			})
+		};
+
+		const firstResolved = resolveGlyphStructures(
+			[
+				{
+					id: 'component',
+					name: 'i.component',
+					structure: 'rrr'
+				},
+				target
+			],
+			{ transparentSymbols: [' ', '.'] }
+		);
+		expect(firstResolved.get('target')).toBe('i.i');
+
+		const secondResolved = resolveGlyphStructures(
+			[
+				{
+					id: 'component',
+					name: 'i.component',
+					structure: 'rrrr'
+				},
+				target
+			],
+			{ transparentSymbols: [' ', '.'] }
+		);
+		expect(secondResolved.get('target')).toBe('i.ii');
+	});
+
+	it('can disable component symbol override for rendered output', () => {
+		const component: GlyphInput = {
+			id: 'component-a',
+			name: 'A.component',
+			structure: '####'
+		};
+		const target: GlyphInput = {
+			id: 'target',
+			name: 'A',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'A.component', symbol: 'i', x: 1, y: 1, rotation: 0 }],
+				body: ''
+			})
+		};
+
+		const withSymbolOverride = resolveGlyphStructures([component, target], {
+			transparentSymbols: [' ', '.']
+		});
+		expect(withSymbolOverride.get('A')).toBe('iiii');
+
+		const withoutSymbolOverride = resolveGlyphStructures([component, target], {
+			transparentSymbols: [' ', '.'],
+			applySymbolOverride: false
+		});
+		expect(withoutSymbolOverride.get('A')).toBe('####');
+	});
+
+	it('parses frontmatter with leading blank lines and keeps component render live', () => {
+		const parsed = parseGlyphStructure(`
+---
+components:
+  - name: A.component
+    symbol: i
+    x: 1
+    y: 1
+    rotation: 0
+---
+ . .
+`);
+		expect(parsed.components).toHaveLength(1);
+		expect(parsed.components[0].name).toBe('A.component');
+
+		const resolved = resolveGlyphStructures(
+			[
+				{
+					id: 'component-a',
+					name: 'A.component',
+					structure: '####'
+				},
+				{
+					id: 'target',
+					name: 'A',
+					structure: `
+---
+components:
+  - name: A.component
+    symbol: i
+    x: 1
+    y: 1
+    rotation: 0
+---
+ . .
+`
+				}
+			],
+			{ transparentSymbols: [' ', '.'] }
+		);
+		expect(resolved.get('A')).toBe('i.i.');
 	});
 });

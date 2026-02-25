@@ -323,7 +323,9 @@
 									</div>
 								{/if}
 							{:else}
-								<span class={isComponentCell ? '' : 'text-red-400'}>•</span>
+								<span class={isComponentCell ? 'font-mono text-slate-800' : 'font-mono text-red-500'}
+									>{cellValue}</span
+								>
 							{/if}
 							{#if isOverriddenComponentCell}
 								<span
