@@ -450,6 +450,46 @@ function applyComponentWithMask(
 	};
 }
 
+function overlayBodyRows(
+	baseRows: Array<Array<string>>,
+	overlayRows: Array<Array<string>>
+): Array<Array<string>> {
+	const matrix = baseRows.map((row) => [...row]);
+	for (let y = 0; y < overlayRows.length; y++) {
+		for (let x = 0; x < overlayRows[y].length; x++) {
+			const value = overlayRows[y][x];
+			// Space keeps component/background content visible.
+			if (value === ' ') continue;
+			ensureCell(matrix, y, x);
+			matrix[y][x] = value;
+		}
+	}
+	return matrix;
+}
+
+function overlayBodyRowsWithMask(
+	baseRows: Array<Array<string>>,
+	baseComponentSources: Array<Array<Array<string>>>,
+	overlayRows: Array<Array<string>>
+): { rows: Array<Array<string>>; componentSources: Array<Array<Array<string>>> } {
+	const matrix = baseRows.map((row) => [...row]);
+	const sourceMatrix = baseComponentSources.map((row) => row.map((cell) => [...cell]));
+	for (let y = 0; y < overlayRows.length; y++) {
+		for (let x = 0; x < overlayRows[y].length; x++) {
+			const value = overlayRows[y][x];
+			// Space keeps component/background content visible.
+			if (value === ' ') continue;
+			ensureCell(matrix, y, x);
+			ensureComponentSourceCell(sourceMatrix, y, x);
+			matrix[y][x] = value;
+		}
+	}
+	return {
+		rows: matrix,
+		componentSources: sourceMatrix
+	};
+}
+
 function rowsToMaskBody(rows: Array<Array<Array<string>>>): string {
 	const serializedRows = rows.map((row) =>
 		row
@@ -489,7 +529,8 @@ function resolveStructureBody(
 	}
 
 	visiting.add(glyphName);
-	let rows = splitRows(parsed.body);
+	const overlayRows = splitRows(parsed.body);
+	let rows: Array<Array<string>> = [];
 
 	for (const component of parsed.components) {
 		const componentBody = resolveStructureBody(
@@ -513,6 +554,8 @@ function resolveStructureBody(
 			rotationMapsByDegrees
 		);
 	}
+
+	rows = overlayBodyRows(rows, overlayRows);
 
 	const resolved = rowsToBody(rows);
 	visiting.delete(glyphName);
@@ -550,8 +593,9 @@ function resolveStructureWithMask(
 	}
 
 	visiting.add(glyphName);
-	let rows = splitRows(parsed.body);
-	let componentSources = createComponentSourceRowsFromBody(rows);
+	const overlayRows = splitRows(parsed.body);
+	let rows: Array<Array<string>> = [];
+	let componentSources: Array<Array<Array<string>>> = [];
 
 	for (const component of parsed.components) {
 		const componentResolved = resolveStructureWithMask(
@@ -579,6 +623,10 @@ function resolveStructureWithMask(
 		rows = next.rows;
 		componentSources = next.componentSources;
 	}
+
+	const layered = overlayBodyRowsWithMask(rows, componentSources, overlayRows);
+	rows = layered.rows;
+	componentSources = layered.componentSources;
 
 	const resolvedData: ResolvedGlyphVisualData = {
 		body: rowsToBody(rows),

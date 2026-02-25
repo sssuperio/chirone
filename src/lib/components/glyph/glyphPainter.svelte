@@ -36,6 +36,9 @@
 	$: gridMatrix = Array.from({ length: gridRows }, (_, row) =>
 		Array.from({ length: gridColumns }, (_, col) => lines[row]?.[col] ?? ' ')
 	);
+	$: overlayMatrix = Array.from({ length: gridRows }, (_, row) =>
+		Array.from({ length: gridColumns }, (_, col) => editableLines[row]?.[col] ?? ' ')
+	);
 	$: componentSourceMatrix = Array.from({ length: gridRows }, (_, row) =>
 		Array.from({ length: gridColumns }, (_, col) => resolvedComponentSources[row]?.[col] ?? [])
 	);
@@ -274,40 +277,60 @@
 				{#each Array.from({ length: gridRows }) as _, row}
 					{#each Array.from({ length: gridColumns }) as __, col}
 						{@const cellValue = gridMatrix[row][col]}
+						{@const overlayValue = overlayMatrix[row][col]}
 						{@const componentSources = componentSourceMatrix[row][col]}
 						{@const isComponentCell = componentSources.length > 0}
+						{@const isOverlayCell = overlayValue !== ' '}
+						{@const isOverriddenComponentCell = isComponentCell && isOverlayCell}
 						{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
-								<button
-									type="button"
-									data-grid-cell="true"
+						<button
+							type="button"
+							data-grid-cell="true"
 								data-row={row}
 								data-col={col}
-								style={`touch-action: none;${componentColor ? ` color: ${componentColor};` : ''}`}
-								class="w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 bg-white hover:bg-blue-100"
-								on:pointerdown={(event) => onPointerDown(row, col, event)}
-								on:touchstart|preventDefault={() => onTouchStart(row, col)}
-								on:contextmenu|preventDefault={(event) => paintCell(row, col, true)}
-							>
-									{#if cellValue === ' '}
-										<span class="text-slate-300">·</span>
-									{:else if rulesBySymbol[cellValue]}
-										{#if rulesBySymbol[cellValue].shape.kind === ShapeKind.Void}
-											<span class={isComponentCell ? 'font-mono' : 'text-slate-500 font-mono'}
-												>{cellValue}</span
-											>
-										{:else}
-											<div class="relative h-full w-full">
-												<div class="absolute inset-[2px] rounded-sm bg-slate-100"></div>
-												<RuleShapePreview
-													rule={rulesBySymbol[cellValue]}
-													className="relative z-10 h-full w-full p-1"
-												/>
-											</div>
-										{/if}
-									{:else}
-										<span class={isComponentCell ? '' : 'text-red-400'}>•</span>
-									{/if}
-								</button>
+							style={`touch-action: none;${
+								isComponentCell && !isOverriddenComponentCell && componentColor
+									? ` color: ${componentColor};`
+									: ''
+							}${
+								isOverriddenComponentCell && componentColor
+									? ` background-color: color-mix(in srgb, ${componentColor} 26%, white);`
+									: ''
+							}`}
+							class={`relative w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 hover:bg-blue-100 ${
+								isOverriddenComponentCell
+									? 'shadow-[inset_0_0_0_1px_rgba(217,119,6,0.6)]'
+									: 'bg-white'
+							}`}
+							on:pointerdown={(event) => onPointerDown(row, col, event)}
+							on:touchstart|preventDefault={() => onTouchStart(row, col)}
+							on:contextmenu|preventDefault={(event) => paintCell(row, col, true)}
+						>
+							{#if cellValue === ' '}
+								<span class="text-slate-300">·</span>
+							{:else if rulesBySymbol[cellValue]}
+								{#if rulesBySymbol[cellValue].shape.kind === ShapeKind.Void}
+									<span class={isComponentCell ? 'font-mono' : 'text-slate-500 font-mono'}
+										>{cellValue}</span
+									>
+								{:else}
+									<div class="relative h-full w-full">
+										<div class="absolute inset-[2px] rounded-sm bg-slate-100"></div>
+										<RuleShapePreview
+											rule={rulesBySymbol[cellValue]}
+											className="relative z-10 h-full w-full p-1"
+										/>
+									</div>
+								{/if}
+							{:else}
+								<span class={isComponentCell ? '' : 'text-red-400'}>•</span>
+							{/if}
+							{#if isOverriddenComponentCell}
+								<span
+									class="pointer-events-none absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500"
+								></span>
+							{/if}
+						</button>
 					{/each}
 				{/each}
 			</div>

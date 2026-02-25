@@ -8,7 +8,11 @@ import {
 	type GlyphInput,
 	type Rule
 } from '$lib/types';
-import { resolveGlyphStructures, serializeGlyphStructure } from './structure';
+import {
+	resolveGlyphStructures,
+	resolveGlyphStructuresWithComponentMask,
+	serializeGlyphStructure
+} from './structure';
 
 function quarterRule(symbol: string, orientation: Orientation): Rule {
 	return {
@@ -81,3 +85,73 @@ describe('resolveGlyphStructures component rotation', () => {
 	});
 });
 
+describe('resolveGlyphStructures layering', () => {
+	it('keeps component cells as background when body has spaces', () => {
+		const component: GlyphInput = {
+			id: 'part',
+			name: 'part.component',
+			structure: 'ab'
+		};
+		const target: GlyphInput = {
+			id: 'target',
+			name: 'target',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'part.component', symbol: '', x: 1, y: 1, rotation: 0 }],
+				body: ' z'
+			})
+		};
+
+		const resolved = resolveGlyphStructures([component, target], {
+			transparentSymbols: [' ', '.']
+		});
+
+		expect(resolved.get('target')).toBe('az');
+	});
+
+	it('allows void symbols in body to override component cells', () => {
+		const component: GlyphInput = {
+			id: 'part',
+			name: 'part.component',
+			structure: 'ab'
+		};
+		const target: GlyphInput = {
+			id: 'target',
+			name: 'target',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'part.component', symbol: '', x: 1, y: 1, rotation: 0 }],
+				body: '. '
+			})
+		};
+
+		const resolved = resolveGlyphStructures([component, target], {
+			transparentSymbols: [' ', '.']
+		});
+
+		expect(resolved.get('target')).toBe('.b');
+	});
+
+	it('preserves component source metadata under overridden cells', () => {
+		const component: GlyphInput = {
+			id: 'part',
+			name: 'part.component',
+			structure: 'ab'
+		};
+		const target: GlyphInput = {
+			id: 'target',
+			name: 'target',
+			structure: serializeGlyphStructure({
+				components: [{ name: 'part.component', symbol: '', x: 1, y: 1, rotation: 0 }],
+				body: ' z'
+			})
+		};
+
+		const resolved = resolveGlyphStructuresWithComponentMask([component, target], {
+			transparentSymbols: [' ', '.']
+		});
+		const targetVisual = resolved.get('target');
+
+		expect(targetVisual?.body).toBe('az');
+		expect(targetVisual?.componentSources[0]?.[0]).toContain('part.component');
+		expect(targetVisual?.componentSources[0]?.[1]).toContain('part.component');
+	});
+});
