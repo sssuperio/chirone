@@ -149,6 +149,48 @@ function isoDateToUnixTimestamp(dateValue: string): number | undefined {
 	return Math.floor(utcMillis / 1000);
 }
 
+function orderGlyphInputs(glyphs: Array<GlyphInput>, glyphOrder: string): Array<GlyphInput> {
+	const orderTokens = glyphOrder
+		.split(/[\s,]+/)
+		.map((token) => token.trim())
+		.filter((token) => token.length > 0);
+
+	if (orderTokens.length === 0) return glyphs;
+
+	const glyphByName = new Map<string, GlyphInput>();
+	for (const glyph of glyphs) {
+		if (!glyphByName.has(glyph.name)) {
+			glyphByName.set(glyph.name, glyph);
+		}
+	}
+
+	const consumedNames = new Set<string>();
+	const ordered: Array<GlyphInput> = [];
+
+	for (const name of orderTokens) {
+		const glyph = glyphByName.get(name);
+		if (!glyph || consumedNames.has(name)) continue;
+		ordered.push(glyph);
+		consumedNames.add(name);
+	}
+
+	for (const glyph of glyphs) {
+		if (!consumedNames.has(glyph.name)) {
+			ordered.push(glyph);
+		}
+	}
+
+	return ordered;
+}
+
+function toOs2VendorID(value: string): string {
+	const normalized = value
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '')
+		.slice(0, 4);
+	return normalized.padEnd(4, 'X');
+}
+
 //
 
 export async function generateFont(
@@ -159,6 +201,9 @@ export async function generateFont(
 ): Promise<opentype.Font> {
 	const normalizedMetrics = normalizeFontMetrics(metrics as any);
 	const normalizedMetadata = normalizeFontMetadata(metadata as any);
+	const fallbackGlyphOrder = glyphs.map((glyph) => glyph.name).join(' ');
+	const effectiveGlyphOrder = normalizedMetadata.glyphOrder || fallbackGlyphOrder;
+	const orderedGlyphs = orderGlyphInputs(glyphs, effectiveGlyphOrder);
 	const baseSquare = unitsPerCell(normalizedMetrics);
 	const ascenderUnits = cellsToUnits(normalizedMetrics, normalizedMetrics.ascender);
 	const descenderUnits = -cellsToUnits(normalizedMetrics, normalizedMetrics.descender);
@@ -184,13 +229,13 @@ export async function generateFont(
 		}
 	}
 
-	const resolvedGlyphStructures = resolveGlyphStructures(glyphs, { transparentSymbols });
-	const resolvedGlyphVisualStructures = resolveGlyphStructures(glyphs, {
+	const resolvedGlyphStructures = resolveGlyphStructures(orderedGlyphs, { transparentSymbols });
+	const resolvedGlyphVisualStructures = resolveGlyphStructures(orderedGlyphs, {
 		transparentSymbols,
 		applySymbolOverride: false
 	});
 
-	for (const g of glyphs) {
+	for (const g of orderedGlyphs) {
 		const resolvedStructure =
 			resolvedGlyphVisualStructures.get(g.name) ??
 			resolvedGlyphStructures.get(g.name) ??
@@ -257,11 +302,15 @@ export async function generateFont(
 	os2.usWinDescent = Math.abs(descenderUnits);
 	os2.sCapHeight = capHeightUnits;
 	os2.sxHeight = xHeightUnits;
+	os2.achVendID = toOs2VendorID(normalizedMetadata.vendorID);
 
 	const hhea = ((font.tables as any).hhea = (font.tables as any).hhea || {});
 	hhea.ascender = ascenderUnits;
 	hhea.descender = descenderUnits;
 	hhea.lineGap = 0;
+
+	delete (font.names as any).trademark;
+	delete (font.names as any).description;
 
 	// opentype.js 1.3.x can crash on generated fonts when a character is missing
 	// (charToGlyphIndex returns null, then GlyphSet.get calls _push()).
@@ -275,7 +324,7 @@ export async function generateFont(
 		return index;
 	};
 
-	applyOpenTypeFeatures(font, glyphs, glyphIndexByName);
+	applyOpenTypeFeatures(font, orderedGlyphs, glyphIndexByName);
 
 	return font;
 }

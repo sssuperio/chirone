@@ -8,6 +8,8 @@ export interface FontMetadata {
 	designerURL: string;
 	manufacturerURL: string;
 	license: string;
+	vendorID: string;
+	glyphOrder: string;
 }
 
 type SafeFontMetadataLike = Partial<FontMetadata> | null | undefined;
@@ -23,6 +25,16 @@ function todayISODate(): string {
 function normalizeString(value: unknown, fallback = ''): string {
 	if (typeof value !== 'string') return fallback;
 	return value.trim();
+}
+
+function normalizeVendorID(value: unknown, fallback: string): string {
+	if (typeof value !== 'string') return fallback;
+	const normalized = value
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '');
+	if (normalized.length === 0) return fallback;
+	return normalized.slice(0, 4);
 }
 
 function normalizeDate(value: unknown, fallback: string): string {
@@ -52,8 +64,10 @@ export function normalizeFontMetadata(input: SafeFontMetadataLike): FontMetadata
 		designer: normalizeString(input?.designer),
 		manufacturer: normalizeString(input?.manufacturer),
 		designerURL: normalizeString(input?.designerURL),
-		manufacturerURL: normalizeString(input?.manufacturerURL),
-		license: normalizeString(input?.license)
+		manufacturerURL: normalizeString(input?.manufacturerURL, 'https://sssuper.io'),
+		license: normalizeString(input?.license),
+		vendorID: normalizeVendorID(input?.vendorID, 'SSSU'),
+		glyphOrder: normalizeString(input?.glyphOrder)
 	};
 }
 
@@ -74,7 +88,8 @@ export function areFontMetadataEqual(
 		aa.manufacturer === bb.manufacturer &&
 		aa.designerURL === bb.designerURL &&
 		aa.manufacturerURL === bb.manufacturerURL &&
-		aa.license === bb.license
+		aa.license === bb.license &&
+		aa.vendorID === bb.vendorID &&
+		aa.glyphOrder === bb.glyphOrder
 	);
 }
-

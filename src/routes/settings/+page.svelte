@@ -230,10 +230,22 @@
 					id="fontMetaManufacturerURL"
 					type="url"
 					class="w-full border border-slate-400 px-3 py-2"
-					placeholder="https://"
+					placeholder="https://sssuper.io"
 					bind:value={$fontMetadata.manufacturerURL}
 				/>
 			</div>
+				<div class="space-y-1">
+					<label class="font-mono text-sm" for="fontMetaVendorID">Vendor ID</label>
+					<input
+						id="fontMetaVendorID"
+						class="w-full border border-slate-400 px-3 py-2 uppercase"
+						placeholder="SSSU"
+						maxlength="4"
+						disabled
+						readonly
+						bind:value={$fontMetadata.vendorID}
+					/>
+				</div>
 		</div>
 		<div class="space-y-1">
 			<label class="font-mono text-sm" for="fontMetaLicense">Licenza</label>
