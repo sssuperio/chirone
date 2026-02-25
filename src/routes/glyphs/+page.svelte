@@ -30,7 +30,13 @@
 		serializeGlyphStructure,
 		type GlyphComponentRef
 	} from '$lib/GTL/structure';
-	import { reflectGlyphStructureBody, rotateGlyphStructureBody } from '$lib/GTL/structureTransforms';
+	import {
+		getCrossedQuarterTurns,
+		mapDirectionalSymbolsForRotation,
+		reflectGlyphStructureBody,
+		replaceMappedSymbols,
+		rotateGlyphStructureBody
+	} from '$lib/GTL/structureTransforms';
 
 	//
 
@@ -471,6 +477,7 @@
 	let selectedGlyphSetFilter = 'all';
 	let showOnlyUndesignedGlyphs = false;
 	let selectedBrushSymbol = '';
+	const glyphBodyRotationProgressByID = new Map<string, number>();
 
 	$: brushSymbols = getSyntaxSymbols($syntaxes);
 	$: rulesBySymbol = getRulesBySymbol($syntaxes);
@@ -558,11 +565,25 @@
 		touchGlyphs();
 	}
 
+	function remapDirectionalSymbolsByQuarterTurns(body: string, quarterTurns: number): string {
+		if (!quarterTurns) return body;
+		const mappedSymbols = mapDirectionalSymbolsForRotation(rulesBySymbol, quarterTurns * 90);
+		if (!mappedSymbols.size) return body;
+
+		return body
+			.split('\n')
+			.map((row) => replaceMappedSymbols(row, mappedSymbols))
+			.join('\n');
+	}
+
 	function rotateSelectedGlyphClockwise() {
 		if (!selectedGlyphData) return;
 		const parsed = parseGlyphStructure(selectedGlyphData.structure);
 		const rotationStep = 15;
-		const rotatedBody = rotateGlyphStructureBody(parsed.body, rotationStep, rulesBySymbol);
+		const previousRotationProgress = glyphBodyRotationProgressByID.get(selectedGlyphData.id) ?? 0;
+		const crossedQuarterTurns = getCrossedQuarterTurns(previousRotationProgress, rotationStep);
+		let rotatedBody = rotateGlyphStructureBody(parsed.body, rotationStep, {});
+		rotatedBody = remapDirectionalSymbolsByQuarterTurns(rotatedBody, crossedQuarterTurns);
 		const rotatedComponents = parsed.components.map((component) => ({
 			...component,
 			rotation: normalizeComponentRotationInput(component.rotation + rotationStep)
@@ -573,6 +594,7 @@
 			nextStructure = replaceGlyphStructureComponents(nextStructure, rotatedComponents);
 		}
 		selectedGlyphData.structure = nextStructure;
+		glyphBodyRotationProgressByID.set(selectedGlyphData.id, previousRotationProgress + rotationStep);
 		touchGlyphs();
 	}
 

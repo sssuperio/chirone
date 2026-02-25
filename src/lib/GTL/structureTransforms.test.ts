@@ -8,6 +8,7 @@ import {
 	type Rule
 } from '$lib/types';
 import {
+	getCrossedQuarterTurns,
 	mapDirectionalSymbolsForRotation,
 	reflectGlyphStructureBody,
 	rotateGlyphStructureBody,
@@ -30,6 +31,15 @@ function quarterRule(symbol: string, orientation: Orientation, squaring = 0.56):
 		}
 	};
 }
+
+describe('getCrossedQuarterTurns', () => {
+	it('counts quarter-turn boundaries crossed by small steps', () => {
+		expect(getCrossedQuarterTurns(0, 15)).toBe(0);
+		expect(getCrossedQuarterTurns(75, 15)).toBe(1);
+		expect(getCrossedQuarterTurns(165, 15)).toBe(1);
+		expect(getCrossedQuarterTurns(345, 15)).toBe(1);
+	});
+});
 
 describe('reflectGlyphStructureBody', () => {
 	it('mirrors left/right and swaps quarter NE <-> NW symbols', () => {

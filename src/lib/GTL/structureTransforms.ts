@@ -90,6 +90,16 @@ function normalizeRotation(rotation: number): number {
 	return normalized === 360 ? 0 : normalized;
 }
 
+export function getCrossedQuarterTurns(previousRotation: number, rotationDelta: number): number {
+	if (!Number.isFinite(previousRotation) || !Number.isFinite(rotationDelta) || rotationDelta === 0) {
+		return 0;
+	}
+
+	const previousTurns = Math.floor(previousRotation / 90);
+	const nextTurns = Math.floor((previousRotation + rotationDelta) / 90);
+	return nextTurns - previousTurns;
+}
+
 function rotateOrientationClockwise(orientation: Orientation, quarterTurns: number): Orientation {
 	let next = orientation;
 	for (let index = 0; index < quarterTurns; index++) {
