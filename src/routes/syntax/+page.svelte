@@ -109,6 +109,13 @@
 		syntax.rules = nextRules;
 		$syntaxes = [...$syntaxes];
 	}
+
+	function handleSyntaxEditorChanged(event: CustomEvent<{ glyphsChanged: boolean }>) {
+		$syntaxes = [...$syntaxes];
+		if (event.detail.glyphsChanged) {
+			$glyphs = [...$glyphs];
+		}
+	}
 </script>
 
 <!--  -->
@@ -156,10 +163,14 @@
 					<DeleteButton on:delete={handleDelete} />
 				</div>
 				<hr />
-				<SyntaxEditor bind:syntax={$syntaxes[currentSyntaxIndex]} />
-			{/if}
-		{/key}
-	</div>
+					<SyntaxEditor
+						bind:syntax={$syntaxes[currentSyntaxIndex]}
+						glyphs={$glyphs}
+						on:changed={handleSyntaxEditorChanged}
+					/>
+				{/if}
+			{/key}
+		</div>
 
 	<div class="p-8 border border-l-gray-300 overflow-y-scroll">
 		{#key currentSyntaxIndex}

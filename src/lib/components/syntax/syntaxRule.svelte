@@ -18,10 +18,14 @@
 	import Select, { type SelectOptions } from '$lib/ui/select.svelte';
 	import Label from '$lib/ui/label.svelte';
 	import InputPropFile from './inputPropFile.svelte';
+	import { createEventDispatcher } from 'svelte';
 
 	//
 
 	export let rule: Rule;
+	export let canUseVoidShape = true;
+
+	const dispatch = createEventDispatcher<{ voidLimit: { symbol: string } }>();
 
 	//
 
@@ -32,6 +36,12 @@
 	}
 
 	function changeShape() {
+		if (tempShape === ShapeKind.Void && !canUseVoidShape) {
+			tempShape = rule.shape.kind;
+			dispatch('voidLimit', { symbol: rule.symbol });
+			return;
+		}
+
 		const data: Record<ShapeKind, Props> = {
 			void: voidProps,
 			rectangle: rectangleProps,
