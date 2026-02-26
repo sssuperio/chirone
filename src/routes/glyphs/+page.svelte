@@ -390,6 +390,62 @@
 		return Array.from((value ?? '').trim())[0] ?? '';
 	}
 
+	type ParsedComponentVariantName = {
+		stem: string;
+		stylisticSetIndex: number | null;
+	};
+
+	function parseComponentVariantName(name: string): ParsedComponentVariantName | undefined {
+		const trimmed = (name ?? '').trim();
+		const match = trimmed.match(/^(.*?)(?:\.ss(\d\d))?\.component$/i);
+		if (!match) return undefined;
+		const stem = (match[1] ?? '').trim();
+		if (!stem) return undefined;
+		const stylisticSetIndex = match[2] ? Number.parseInt(match[2], 10) : null;
+		return {
+			stem,
+			stylisticSetIndex: Number.isFinite(stylisticSetIndex) ? stylisticSetIndex : null
+		};
+	}
+
+	function getComponentVariantNames(componentName: string): Array<string> {
+		const parsed = parseComponentVariantName(componentName);
+		if (!parsed) return [componentName];
+		const stemLower = parsed.stem.toLowerCase();
+		const variants = new Set<string>([componentName]);
+		for (const glyph of $glyphs) {
+			if (!isComponentGlyphName(glyph.name)) continue;
+			const candidate = parseComponentVariantName(glyph.name);
+			if (!candidate) continue;
+			if (candidate.stem.toLowerCase() !== stemLower) continue;
+			variants.add(glyph.name);
+		}
+
+		return Array.from(variants).sort((a, b) => {
+			const parsedA = parseComponentVariantName(a);
+			const parsedB = parseComponentVariantName(b);
+			const orderA = parsedA?.stylisticSetIndex ?? 0;
+			const orderB = parsedB?.stylisticSetIndex ?? 0;
+			if (orderA !== orderB) return orderA - orderB;
+			return a.localeCompare(b);
+		});
+	}
+
+	function getCurrentComponentVariantLabel(componentName: string): string {
+		const parsed = parseComponentVariantName(componentName);
+		if (!parsed) return componentName;
+		if (parsed.stylisticSetIndex === null) return 'base';
+		return `ss${String(parsed.stylisticSetIndex).padStart(2, '0')}`;
+	}
+
+	function getNextComponentVariantName(componentName: string): string {
+		const variants = getComponentVariantNames(componentName);
+		if (variants.length <= 1) return componentName;
+		const currentIndex = variants.indexOf(componentName);
+		const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+		return variants[(safeIndex + 1) % variants.length];
+	}
+
 	function getComponentSymbolCandidates(componentName: string): Array<string> {
 		const withoutComponentSuffix = componentName.replace(/\.component$/i, '');
 		const seen = new Set<string>();
@@ -483,6 +539,13 @@
 			)
 		);
 		touchGlyphs();
+	}
+
+	function cycleComponentReferenceVariant(targetGlyph: GlyphInput, componentIndex: number) {
+		updateComponentReference(targetGlyph, componentIndex, (existing) => ({
+			...existing,
+			name: getNextComponentVariantName(existing.name)
+		}));
 	}
 
 	type GlyphEditorTab = 'visualDesign' | 'glyphStructure';
@@ -998,10 +1061,24 @@
 										{#if glyphComponents.length}
 											<div class="space-y-1">
 												{#each glyphComponents as component, index (`${component.name}:${index}`)}
+													{@const componentVariantNames = getComponentVariantNames(component.name)}
 													<div
 														class="flex flex-wrap items-center gap-2 border border-slate-200 bg-white px-2 py-1"
 													>
 														<p class="max-w-[260px] truncate text-[11px]">{component.name}</p>
+														<button
+															type="button"
+															class="h-6 px-2 bg-slate-200 text-[11px] text-slate-800 hover:bg-slate-300 disabled:opacity-40 disabled:hover:bg-slate-200"
+															disabled={componentVariantNames.length <= 1}
+															title={
+																componentVariantNames.length > 1
+																	? `Varianti: ${componentVariantNames.join(', ')}`
+																	: 'Nessuna variante ss disponibile'
+															}
+															on:click={() => cycleComponentReferenceVariant(g, index)}
+														>
+															ss {getCurrentComponentVariantLabel(component.name)} ↻
+														</button>
 														<div class="flex items-center gap-1">
 															<span class="text-[10px] text-slate-500">x</span>
 															<input

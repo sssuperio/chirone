@@ -6,7 +6,12 @@
 		normalizeGlyphNameInput
 	} from '$lib/GTL/glyphName';
 	import { inferGlyphSetIDByName } from '$lib/GTL/glyphSets';
-	import { parseGlyphStructure, resolveGlyphStructures } from '$lib/GTL/structure';
+	import {
+		isComponentGlyphName,
+		parseGlyphStructure,
+		resolveGlyphStructures,
+		serializeGlyphStructure
+	} from '$lib/GTL/structure';
 	import { findCharInUnicodeList } from '$lib/GTL/unicode';
 	import { glyphs, selectedGlyph } from '$lib/stores';
 	import type { GlyphInput } from '$lib/types';
@@ -35,6 +40,7 @@
 	$: newGlyphStructure = cloneSourceGlyph?.structure ?? autoStructure;
 	$: sortedGlyphNames = [...$glyphs.map((glyph) => glyph.name)].sort((a, b) => a.localeCompare(b));
 	$: canAdd = Boolean(normalizedGlyphName && isValidGlyphName(normalizedGlyphName) && !glyphAlreadyExists);
+	$: linkedComponentAlternates = getLinkedComponentAlternatesForNewComponent(normalizedGlyphName);
 	$: missingLigatureComponents =
 		ligatureComponents.length > 1
 			? ligatureComponents.filter((name) => !findGlyphByName(name))
@@ -91,6 +97,13 @@
 	function getAutoStructure(glyphName: string): string {
 		if (!glyphName) return '';
 
+		const componentStylisticSet = parseComponentStylisticSetName(glyphName);
+		if (componentStylisticSet) {
+			const baseComponentGlyph = findGlyphByName(componentStylisticSet.baseComponentName);
+			if (!baseComponentGlyph) return '';
+			return getResolvedStructureByGlyphName(baseComponentGlyph.name);
+		}
+
 		const components = getLigatureComponentNames(glyphName);
 		if (components.length > 1) {
 			const componentGlyphs = components.map((name) => findGlyphByName(name));
@@ -113,6 +126,82 @@
 		return getResolvedStructureByGlyphName(baseGlyph.name);
 	}
 
+	type ComponentStylisticSetName = {
+		baseComponentName: string;
+		stylisticSetTag: string;
+	};
+
+	type LinkedComponentAlternate = {
+		baseGlyphName: string;
+		targetGlyphName: string;
+	};
+
+	function parseComponentStylisticSetName(name: string): ComponentStylisticSetName | undefined {
+		const trimmed = name.trim();
+		const match = trimmed.match(/^(.*)\.(ss\d\d)\.component$/i);
+		if (!match) return undefined;
+		const baseStem = match[1]?.trim();
+		const stylisticSetTag = match[2]?.toLowerCase();
+		if (!baseStem || !stylisticSetTag) return undefined;
+		return {
+			baseComponentName: `${baseStem}.component`,
+			stylisticSetTag
+		};
+	}
+
+	function getFirstAvailableStylisticSetTag(
+		baseGlyphName: string,
+		preferredTag: string,
+		takenGlyphNames: Set<string>
+	): string | undefined {
+		const preferredName = `${baseGlyphName}.${preferredTag}`;
+		if (!takenGlyphNames.has(preferredName)) return preferredTag;
+
+		for (let index = 1; index <= 99; index++) {
+			const candidateTag = `ss${String(index).padStart(2, '0')}`;
+			const candidateName = `${baseGlyphName}.${candidateTag}`;
+			if (!takenGlyphNames.has(candidateName)) return candidateTag;
+		}
+
+		return undefined;
+	}
+
+	function getLinkedComponentAlternatesForNewComponent(newComponentName: string): Array<LinkedComponentAlternate> {
+		const componentStylisticSet = parseComponentStylisticSetName(newComponentName);
+		if (!componentStylisticSet) return [];
+
+		const takenGlyphNames = new Set($glyphs.map((glyph) => glyph.name));
+		const matches: Array<LinkedComponentAlternate> = [];
+		const candidateGlyphs = [...$glyphs].sort((a, b) => a.name.localeCompare(b.name));
+
+		for (const glyph of candidateGlyphs) {
+			if (isComponentGlyphName(glyph.name)) continue;
+			if (getAlternateBaseName(glyph.name)) continue;
+
+			const parsed = parseGlyphStructure(glyph.structure);
+			const usesBaseComponent = parsed.components.some(
+				(component) => component.name === componentStylisticSet.baseComponentName
+			);
+			if (!usesBaseComponent) continue;
+
+			const tag = getFirstAvailableStylisticSetTag(
+				glyph.name,
+				componentStylisticSet.stylisticSetTag,
+				takenGlyphNames
+			);
+			if (!tag) continue;
+
+			const targetGlyphName = `${glyph.name}.${tag}`;
+			takenGlyphNames.add(targetGlyphName);
+			matches.push({
+				baseGlyphName: glyph.name,
+				targetGlyphName
+			});
+		}
+
+		return matches;
+	}
+
 	function addGlyph() {
 		if (!canAdd) return;
 
@@ -123,7 +212,37 @@
 			set: inferGlyphSetIDByName(normalizedGlyphName)
 		};
 
-		$glyphs = [...$glyphs, newGlyph];
+		const nextGlyphs: Array<GlyphInput> = [...$glyphs, newGlyph];
+		const componentStylisticSet = parseComponentStylisticSetName(normalizedGlyphName);
+		if (componentStylisticSet) {
+			const targetNameByBaseGlyph = new Map(
+				linkedComponentAlternates.map((item) => [item.baseGlyphName, item.targetGlyphName])
+			);
+			for (const sourceGlyph of $glyphs) {
+				const targetGlyphName = targetNameByBaseGlyph.get(sourceGlyph.name);
+				if (!targetGlyphName) continue;
+
+				const parsedSource = parseGlyphStructure(sourceGlyph.structure);
+				const replacedComponents = parsedSource.components.map((component) =>
+					component.name === componentStylisticSet.baseComponentName
+						? { ...component, name: normalizedGlyphName }
+						: component
+				);
+				const targetStructure = serializeGlyphStructure({
+					...parsedSource,
+					components: replacedComponents
+				});
+
+				nextGlyphs.push({
+					id: nanoid(5),
+					name: targetGlyphName,
+					structure: targetStructure,
+					set: inferGlyphSetIDByName(targetGlyphName)
+				});
+			}
+		}
+
+		$glyphs = nextGlyphs;
 		$selectedGlyph = newGlyph.id;
 		glyphNameInput = '';
 		open = false;
@@ -179,6 +298,12 @@
 				<p>
 					Clone attivo da `{cloneSourceGlyph.name}`. Il nuovo glifo parte con la stessa struttura
 					(componenti + override).
+				</p>
+			{:else if linkedComponentAlternates.length}
+				<p>
+					Componente stilistico rilevato. Verranno creati: {linkedComponentAlternates
+						.map((item) => item.targetGlyphName)
+						.join(', ')}
 				</p>
 			{:else if ligatureComponents.length > 1}
 				{#if missingLigatureComponents.length}
