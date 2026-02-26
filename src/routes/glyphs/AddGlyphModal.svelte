@@ -21,8 +21,10 @@
 
 	let glyphNameInput = '';
 	let glyphNameInputEl: HTMLInputElement | undefined;
+	let cloneSourceGlyphName = '';
 
 	$: normalizedGlyphName = normalizeGlyphNameInput(glyphNameInput);
+	$: cloneSourceGlyph = cloneSourceGlyphName ? findGlyphByName(cloneSourceGlyphName) : undefined;
 	$: unicodeMatch =
 		glyphNameInput.trim().length === 1 ? findCharInUnicodeList(glyphNameInput.trim()) : undefined;
 	$: glyphAlreadyExists = doesGlyphAlreadyExist(normalizedGlyphName);
@@ -30,11 +32,16 @@
 	$: alternateBase = getAlternateBaseName(normalizedGlyphName);
 	$: resolvedGlyphStructures = resolveGlyphStructures($glyphs);
 	$: autoStructure = getAutoStructure(normalizedGlyphName);
+	$: newGlyphStructure = cloneSourceGlyph?.structure ?? autoStructure;
+	$: sortedGlyphNames = [...$glyphs.map((glyph) => glyph.name)].sort((a, b) => a.localeCompare(b));
 	$: canAdd = Boolean(normalizedGlyphName && isValidGlyphName(normalizedGlyphName) && !glyphAlreadyExists);
 	$: missingLigatureComponents =
 		ligatureComponents.length > 1
 			? ligatureComponents.filter((name) => !findGlyphByName(name))
 			: [];
+	$: if (cloneSourceGlyphName && !sortedGlyphNames.includes(cloneSourceGlyphName)) {
+		cloneSourceGlyphName = '';
+	}
 
 	//
 
@@ -112,7 +119,7 @@
 		const newGlyph: GlyphInput = {
 			id: nanoid(5),
 			name: normalizedGlyphName,
-			structure: autoStructure,
+			structure: newGlyphStructure,
 			set: inferGlyphSetIDByName(normalizedGlyphName)
 		};
 
@@ -124,6 +131,7 @@
 
 	async function focusGlyphNameInput() {
 		glyphNameInput = '';
+		cloneSourceGlyphName = '';
 		await tick();
 		glyphNameInputEl?.focus();
 		glyphNameInputEl?.select();
@@ -148,6 +156,17 @@
 				autocomplete="off"
 			/>
 		</div>
+		<div class="space-y-1">
+			<p class="text-xs text-slate-600">
+				Clona da glifo esistente (opzionale, copia anche componenti/frontmatter)
+			</p>
+			<select class="w-full border hover:border-blue-600 px-4 py-2" bind:value={cloneSourceGlyphName}>
+				<option value="">Nessun clone</option>
+				{#each sortedGlyphNames as glyphName (glyphName)}
+					<option value={glyphName}>{glyphName}</option>
+				{/each}
+			</select>
+		</div>
 
 		<div class="grow bg-gray-100 flex items-center px-4 py-3 min-h-[3rem]">
 			{#if !glyphNameInput.trim()}
@@ -156,6 +175,11 @@
 				<p>Nome non valido: evita spazi e newline</p>
 			{:else if glyphAlreadyExists}
 				<p>Questo glifo è già presente</p>
+			{:else if cloneSourceGlyph}
+				<p>
+					Clone attivo da `{cloneSourceGlyph.name}`. Il nuovo glifo parte con la stessa struttura
+					(componenti + override).
+				</p>
 			{:else if ligatureComponents.length > 1}
 				{#if missingLigatureComponents.length}
 					<p>
