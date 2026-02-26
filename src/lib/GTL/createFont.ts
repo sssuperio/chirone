@@ -31,7 +31,8 @@ export async function generateGlyph(
 	syntax: Syntax,
 	baseSize = 100,
 	widthRatio = 1,
-	baseline = 1
+	baseline = 1,
+	unicodeOverride?: number | null
 ): Promise<opentype.Glyph> {
 	/**
 	 * Paperjs part
@@ -76,11 +77,8 @@ export async function generateGlyph(
 					const transform = calcTransform(rule.shape.props);
 					for (const p of subPaths) {
 						applyTransform(p, transform, box.center);
+						normalizePathOrientation(p, true);
 					}
-					// // Reorienting paths
-					// for (const p of boxPaths) {
-					// 	p.reorient(true, true);
-					// }
 					paths.push(...subPaths);
 				}
 			}
@@ -104,7 +102,8 @@ export async function generateGlyph(
 	// Adding glyph metadata
 	const name = glyph.name;
 	const advanceWidth = getGlyphWidth(renderStructure, baseSize * widthRatio);
-	const unicode = resolveUnicodeNumber(name);
+	const unicode =
+		unicodeOverride === undefined ? resolveUnicodeNumber(name) : unicodeOverride;
 
 	// Clearing paperjs
 	paper.project.clear();
@@ -115,11 +114,29 @@ export async function generateGlyph(
 		path: oPath
 	};
 
-	if (unicode !== undefined) {
+	if (isEncodableUnicode(unicode)) {
 		glyphOptions.unicode = unicode;
 	}
 
 	return new opentype.Glyph(glyphOptions);
+}
+
+function normalizePathOrientation(path: paper.PathItem, clockwise = true) {
+	const pathWithReorient = path as paper.PathItem & {
+		reorient?: (nonZero?: boolean, clockwise?: boolean) => void;
+	};
+	if (typeof pathWithReorient.reorient === 'function') {
+		// Keep winding consistent after reflections while preserving hole directions.
+		pathWithReorient.reorient(true, clockwise);
+		return;
+	}
+
+	if (path.className !== 'Path') return;
+	const simplePath = path as paper.Path;
+	if (!simplePath.closed) return;
+	if (simplePath.clockwise !== clockwise) {
+		simplePath.reverse();
+	}
 }
 
 //
@@ -191,6 +208,14 @@ function toOs2VendorID(value: string): string {
 	return normalized.padEnd(4, 'X');
 }
 
+function isEncodableUnicode(value: number | undefined | null): value is number {
+	if (typeof value !== 'number' || !Number.isInteger(value)) return false;
+	if (value < 0 || value > 0x10ffff) return false;
+	// Surrogate code points are not valid Unicode scalar values.
+	if (value >= 0xd800 && value <= 0xdfff) return false;
+	return true;
+}
+
 //
 
 export async function generateFont(
@@ -216,11 +241,11 @@ export async function generateFont(
 	// Adding Notdef - is required
 	const notdefGlyph = new opentype.Glyph({
 		name: '.notdef',
-		unicode: 0,
 		advanceWidth: baseSquare * 4,
 		path: new opentype.Path()
 	});
 	opentypeGlyphs.push(notdefGlyph);
+	const cmapCodepoints = new Set<number>();
 
 	const transparentSymbols = new Set<string>([' ']);
 	for (const rule of syntax.rules) {
@@ -251,6 +276,14 @@ export async function generateFont(
 			resolvedGlyphRenderStructures.get(g.name) ??
 			resolvedGlyphStructures.get(g.name) ??
 			parseGlyphStructure(g.structure).body;
+		const resolvedUnicode = resolveUnicodeNumber(g.name);
+		const cmapUnicode =
+			isEncodableUnicode(resolvedUnicode) && !cmapCodepoints.has(resolvedUnicode)
+				? resolvedUnicode
+				: null;
+		if (cmapUnicode !== null) {
+			cmapCodepoints.add(cmapUnicode);
+		}
 		opentypeGlyphs.push(
 			await generateGlyph(
 				{
@@ -260,7 +293,8 @@ export async function generateFont(
 				syntax,
 				baseSquare,
 				1,
-				normalizedMetrics.descender
+				normalizedMetrics.descender,
+				cmapUnicode
 			)
 		);
 	}
@@ -403,8 +437,8 @@ function applyOpenTypeFeatures(
 
 	// Alternates:
 	// - stylistic sets from "base.ss01", "base.ss02", ...
-	// - general alternates in "salt"/"aalt" using dotted suffix names.
-	const alternatesByBase = new Map<number, Set<number>>();
+	// We intentionally do not auto-emit aalt/salt here to avoid implicit
+	// "from [...]" alternate lookups when only a single alternate exists.
 	for (const glyph of glyphs) {
 		const baseName = getAlternateBaseName(glyph.name);
 		if (!baseName) continue;
@@ -418,18 +452,6 @@ function applyOpenTypeFeatures(
 		if (stylisticSet) {
 			pushSubstitution(stylisticSet, { sub: baseGlyphIndex, by: alternateGlyphIndex });
 		}
-
-		if (!alternatesByBase.has(baseGlyphIndex)) {
-			alternatesByBase.set(baseGlyphIndex, new Set<number>());
-		}
-		alternatesByBase.get(baseGlyphIndex)?.add(alternateGlyphIndex);
-	}
-
-	for (const [baseGlyphIndex, alternateSet] of alternatesByBase.entries()) {
-		const alternates = Array.from(alternateSet);
-		if (!alternates.length) continue;
-		pushSubstitution('aalt', { sub: baseGlyphIndex, by: alternates });
-		pushSubstitution('salt', { sub: baseGlyphIndex, by: alternates });
 	}
 
 	// OpenType layout helper in opentype.js requires feature tags to be added alphabetically.
