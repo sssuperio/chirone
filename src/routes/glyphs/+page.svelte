@@ -636,23 +636,92 @@
 		touchGlyphs();
 	}
 
+	function getStructureSize(structure: string): { width: number; height: number } {
+		const rows = (structure || '').split(/\r?\n/);
+		return {
+			width: Math.max(0, ...rows.map((row) => row.length)),
+			height: rows.length
+		};
+	}
+
+	function getComponentBodyForTransform(componentName: string): string {
+		const resolved = resolvedGlyphStructuresVisual.get(componentName);
+		if (resolved !== undefined) return resolved;
+		const source = $glyphs.find((glyph) => glyph.name === componentName);
+		return source ? parseGlyphStructure(source.structure).body : '';
+	}
+
+	function getComponentBodySize(componentName: string): { width: number; height: number } {
+		return getStructureSize(getComponentBodyForTransform(componentName));
+	}
+
 	function mirrorSelectedGlyphLeftRight() {
 		if (!selectedGlyphData) return;
 		const parsed = parseGlyphStructure(selectedGlyphData.structure);
-		selectedGlyphData.structure = replaceGlyphStructureBody(
+		const resolvedSize = getStructureSize(getResolvedGlyphBody(selectedGlyphData));
+		const canvasWidth = resolvedSize.width;
+		let nextStructure = replaceGlyphStructureBody(
 			selectedGlyphData.structure,
 			reflectGlyphStructureBody(parsed.body, 'vertical', rulesBySymbol)
 		);
+		if (parsed.components.length && canvasWidth > 0) {
+			nextStructure = replaceGlyphStructureComponents(
+				nextStructure,
+				parsed.components.map((component) => ({
+					...component,
+					x:
+						canvasWidth -
+						normalizeComponentPositionInput(component.x) -
+						getComponentBodySize(component.name).width +
+						2,
+					mirrored: !component.mirrored
+				}))
+			);
+		} else if (parsed.components.length) {
+			nextStructure = replaceGlyphStructureComponents(
+				nextStructure,
+				parsed.components.map((component) => ({
+					...component,
+					mirrored: !component.mirrored
+				}))
+			);
+		}
+		selectedGlyphData.structure = nextStructure;
 		touchGlyphs();
 	}
 
 	function flipSelectedGlyphTopBottom() {
 		if (!selectedGlyphData) return;
 		const parsed = parseGlyphStructure(selectedGlyphData.structure);
-		selectedGlyphData.structure = replaceGlyphStructureBody(
+		const resolvedSize = getStructureSize(getResolvedGlyphBody(selectedGlyphData));
+		const canvasHeight = resolvedSize.height;
+		let nextStructure = replaceGlyphStructureBody(
 			selectedGlyphData.structure,
 			reflectGlyphStructureBody(parsed.body, 'horizontal', rulesBySymbol)
 		);
+		if (parsed.components.length && canvasHeight > 0) {
+			nextStructure = replaceGlyphStructureComponents(
+				nextStructure,
+				parsed.components.map((component) => ({
+					...component,
+					y:
+						canvasHeight -
+						normalizeComponentPositionInput(component.y) -
+						getComponentBodySize(component.name).height +
+						2,
+					flipped: !component.flipped
+				}))
+			);
+		} else if (parsed.components.length) {
+			nextStructure = replaceGlyphStructureComponents(
+				nextStructure,
+				parsed.components.map((component) => ({
+					...component,
+					flipped: !component.flipped
+				}))
+			);
+		}
+		selectedGlyphData.structure = nextStructure;
 		touchGlyphs();
 	}
 
