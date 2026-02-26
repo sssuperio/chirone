@@ -13,6 +13,7 @@
 		{ href: `${base}/syntax`, text: 'Sintassi' },
 		{ href: `${base}/metrics`, text: 'Metriche' },
 		{ href: `${base}/output`, text: 'Output' },
+		{ href: `${base}/revisioni`, text: 'Revisioni' },
 		{ href: `${base}/settings`, text: 'Impostazioni' }
 	];
 

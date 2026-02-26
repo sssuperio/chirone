@@ -119,6 +119,45 @@ type projectVersionResponse struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+type revisionDocument struct {
+	ID        string `json:"id"`
+	Project   string `json:"project"`
+	Version   int64  `json:"version"`
+	CreatedAt string `json:"createdAt"`
+	Message   string `json:"message"`
+	projectSnapshot
+}
+
+type revisionMeta struct {
+	ID        string `json:"id"`
+	Version   int64  `json:"version"`
+	CreatedAt string `json:"createdAt"`
+	Message   string `json:"message"`
+}
+
+type revisionsResponse struct {
+	Project          string         `json:"project"`
+	CurrentVersion   int64          `json:"currentVersion"`
+	SuggestedMessage string         `json:"suggestedMessage"`
+	Revisions        []revisionMeta `json:"revisions"`
+}
+
+type createRevisionRequest struct {
+	ClientID string `json:"clientId,omitempty"`
+	Message  string `json:"message"`
+}
+
+type createRevisionResponse struct {
+	Project          string       `json:"project"`
+	SuggestedMessage string       `json:"suggestedMessage"`
+	Revision         revisionMeta `json:"revision"`
+}
+
+type revertRevisionRequest struct {
+	ClientID string `json:"clientId,omitempty"`
+	ID       string `json:"id"`
+}
+
 type appSHAResponse struct {
 	SHA string `json:"sha"`
 }
@@ -160,7 +199,8 @@ type hub struct {
 }
 
 var (
-	projectIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	projectIDPattern  = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	revisionIDPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 )
 
 func newHub(dataDir string) *hub {
@@ -381,6 +421,14 @@ func (h *hub) projectGlyphFile(projectID, filename string) string {
 
 func (h *hub) projectSyntaxFile(projectID, filename string) string {
 	return filepath.Join(h.projectSyntaxDir(projectID), filename)
+}
+
+func (h *hub) projectRevisionDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "revisions")
+}
+
+func (h *hub) projectRevisionFile(projectID, revisionID string) string {
+	return filepath.Join(h.projectRevisionDir(projectID), fmt.Sprintf("%s.json", revisionID))
 }
 
 func (h *hub) loadProjectFromDisk(projectID string) (*projectDocument, error) {
@@ -642,6 +690,416 @@ func cloneProjectStateForPersist(state *projectState) *projectState {
 	}
 }
 
+func cloneProjectSnapshot(snapshot projectSnapshot) projectSnapshot {
+	return projectSnapshot{
+		Glyphs:   cloneRawMessage(snapshot.Glyphs),
+		Syntaxes: cloneRawMessage(snapshot.Syntaxes),
+		Metrics:  cloneRawMessage(snapshot.Metrics),
+	}
+}
+
+func projectResponseFromState(state *projectState) projectResponse {
+	return projectResponse{
+		projectDocument: state.Doc,
+		GlyphVersions:   cloneInt64Map(state.GlyphVersions),
+		SyntaxVersions:  cloneInt64Map(state.SyntaxVersions),
+		MetricsVersion:  state.MetricsVersion,
+	}
+}
+
+func entityRawMapsEqual(a, b map[string]json.RawMessage) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, aValue := range a {
+		bValue, ok := b[key]
+		if !ok {
+			return false
+		}
+		if string(aValue) != string(bValue) {
+			return false
+		}
+	}
+	return true
+}
+
+func listNameSummary(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	sort.Strings(values)
+	const maxNames = 8
+	if len(values) <= maxNames {
+		return strings.Join(values, ", ")
+	}
+	return fmt.Sprintf("%s (+%d)", strings.Join(values[:maxNames], ", "), len(values)-maxNames)
+}
+
+func entityDisplayName(raw json.RawMessage, id string) string {
+	name := strings.TrimSpace(entityNameFromRaw(raw))
+	if name == "" {
+		return id
+	}
+	return name
+}
+
+func buildEntityDiffSegment(label string, currentRaw, previousRaw json.RawMessage) string {
+	currentMap, err := parseEntityArrayByID(currentRaw, label)
+	if err != nil {
+		return ""
+	}
+	previousMap, err := parseEntityArrayByID(previousRaw, label)
+	if err != nil {
+		return ""
+	}
+
+	added := make([]string, 0)
+	changed := make([]string, 0)
+	removed := make([]string, 0)
+
+	for id, currentItem := range currentMap {
+		previousItem, hadPrevious := previousMap[id]
+		if !hadPrevious {
+			added = append(added, entityDisplayName(currentItem, id))
+			continue
+		}
+		if string(currentItem) != string(previousItem) {
+			changed = append(changed, entityDisplayName(currentItem, id))
+		}
+	}
+	for id, previousItem := range previousMap {
+		if _, stillPresent := currentMap[id]; stillPresent {
+			continue
+		}
+		removed = append(removed, entityDisplayName(previousItem, id))
+	}
+
+	parts := make([]string, 0, 3)
+	if len(added) > 0 {
+		parts = append(parts, fmt.Sprintf("+%d [%s]", len(added), listNameSummary(added)))
+	}
+	if len(changed) > 0 {
+		parts = append(parts, fmt.Sprintf("~%d [%s]", len(changed), listNameSummary(changed)))
+	}
+	if len(removed) > 0 {
+		parts = append(parts, fmt.Sprintf("-%d [%s]", len(removed), listNameSummary(removed)))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s %s", label, strings.Join(parts, " "))
+}
+
+func buildSuggestedRevisionMessage(current projectSnapshot, previous *projectSnapshot) string {
+	if previous == nil {
+		glyphCount := 0
+		syntaxCount := 0
+		if parsedGlyphs, err := parseEntityArrayByID(current.Glyphs, "glyphs"); err == nil {
+			glyphCount = len(parsedGlyphs)
+		}
+		if parsedSyntaxes, err := parseEntityArrayByID(current.Syntaxes, "syntaxes"); err == nil {
+			syntaxCount = len(parsedSyntaxes)
+		}
+		return fmt.Sprintf("Init progetto: %d glifi, %d sintassi", glyphCount, syntaxCount)
+	}
+
+	segments := make([]string, 0, 3)
+	if glyphSegment := buildEntityDiffSegment("glifi", current.Glyphs, previous.Glyphs); glyphSegment != "" {
+		segments = append(segments, glyphSegment)
+	}
+	if syntaxSegment := buildEntityDiffSegment("sintassi", current.Syntaxes, previous.Syntaxes); syntaxSegment != "" {
+		segments = append(segments, syntaxSegment)
+	}
+	if string(current.Metrics) != string(previous.Metrics) {
+		segments = append(segments, "metriche aggiornate")
+	}
+
+	if len(segments) == 0 {
+		return "Nessuna modifica rispetto all'ultima revisione"
+	}
+	return strings.Join(segments, " | ")
+}
+
+func revisionMetaFromDocument(doc revisionDocument) revisionMeta {
+	return revisionMeta{
+		ID:        doc.ID,
+		Version:   doc.Version,
+		CreatedAt: doc.CreatedAt,
+		Message:   doc.Message,
+	}
+}
+
+func (h *hub) listRevisionDocuments(projectID string) ([]revisionDocument, error) {
+	entries, err := os.ReadDir(h.projectRevisionDir(projectID))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []revisionDocument{}, nil
+		}
+		return nil, err
+	}
+
+	revisions := make([]revisionDocument, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if pathpkg.Ext(name) != ".json" {
+			continue
+		}
+
+		revisionID := strings.TrimSuffix(name, ".json")
+		if !revisionIDPattern.MatchString(revisionID) {
+			continue
+		}
+
+		raw, err := os.ReadFile(h.projectRevisionFile(projectID, revisionID))
+		if err != nil {
+			return nil, err
+		}
+
+		var doc revisionDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, err
+		}
+		if doc.ID == "" {
+			doc.ID = revisionID
+		}
+		if doc.CreatedAt == "" {
+			doc.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
+		doc.Message = strings.TrimSpace(doc.Message)
+		if doc.Message == "" {
+			doc.Message = "Revisione senza messaggio"
+		}
+		doc.Project = projectID
+
+		snapshot, err := normalizeSnapshot(doc.projectSnapshot)
+		if err != nil {
+			return nil, err
+		}
+		doc.projectSnapshot = snapshot
+		revisions = append(revisions, doc)
+	}
+
+	sort.Slice(revisions, func(i, j int) bool {
+		if revisions[i].CreatedAt == revisions[j].CreatedAt {
+			return revisions[i].ID > revisions[j].ID
+		}
+		return revisions[i].CreatedAt > revisions[j].CreatedAt
+	})
+
+	return revisions, nil
+}
+
+func (h *hub) loadRevisionDocument(projectID, revisionID string) (*revisionDocument, error) {
+	revisionID = strings.TrimSpace(revisionID)
+	if !revisionIDPattern.MatchString(revisionID) {
+		return nil, errors.New("invalid revision id")
+	}
+
+	raw, err := os.ReadFile(h.projectRevisionFile(projectID, revisionID))
+	if err != nil {
+		return nil, err
+	}
+
+	var doc revisionDocument
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if doc.ID == "" {
+		doc.ID = revisionID
+	}
+	doc.Project = projectID
+	doc.Message = strings.TrimSpace(doc.Message)
+	if doc.Message == "" {
+		doc.Message = "Revisione senza messaggio"
+	}
+	if doc.CreatedAt == "" {
+		doc.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	snapshot, err := normalizeSnapshot(doc.projectSnapshot)
+	if err != nil {
+		return nil, err
+	}
+	doc.projectSnapshot = snapshot
+
+	return &doc, nil
+}
+
+func (h *hub) getRevisions(projectID string) (revisionsResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+
+	project, err := h.getOrCreateProjectResponse(projectID)
+	if err != nil {
+		return revisionsResponse{}, err
+	}
+
+	revisions, err := h.listRevisionDocuments(projectID)
+	if err != nil {
+		return revisionsResponse{}, err
+	}
+
+	metas := make([]revisionMeta, 0, len(revisions))
+	for _, revision := range revisions {
+		metas = append(metas, revisionMetaFromDocument(revision))
+	}
+
+	var previousSnapshot *projectSnapshot
+	if len(revisions) > 0 {
+		previousSnapshot = &revisions[0].projectSnapshot
+	}
+
+	return revisionsResponse{
+		Project:          projectID,
+		CurrentVersion:   project.Version,
+		SuggestedMessage: buildSuggestedRevisionMessage(project.projectSnapshot, previousSnapshot),
+		Revisions:        metas,
+	}, nil
+}
+
+func (h *hub) createRevision(projectID string, req createRevisionRequest) (createRevisionResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+
+	project, err := h.getOrCreateProjectResponse(projectID)
+	if err != nil {
+		return createRevisionResponse{}, err
+	}
+
+	revisions, err := h.listRevisionDocuments(projectID)
+	if err != nil {
+		return createRevisionResponse{}, err
+	}
+
+	var previousSnapshot *projectSnapshot
+	if len(revisions) > 0 {
+		previousSnapshot = &revisions[0].projectSnapshot
+	}
+	suggested := buildSuggestedRevisionMessage(project.projectSnapshot, previousSnapshot)
+
+	message := strings.TrimSpace(req.Message)
+	if message == "" {
+		message = suggested
+	}
+
+	baseID := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+	revisionID := baseID
+	for attempt := 1; ; attempt++ {
+		if _, err := os.Stat(h.projectRevisionFile(projectID, revisionID)); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		revisionID = fmt.Sprintf("%s-%d", baseID, attempt)
+	}
+
+	revision := revisionDocument{
+		ID:              revisionID,
+		Project:         projectID,
+		Version:         project.Version,
+		CreatedAt:       time.Now().UTC().Format(time.RFC3339Nano),
+		Message:         message,
+		projectSnapshot: cloneProjectSnapshot(project.projectSnapshot),
+	}
+
+	bytes, err := json.MarshalIndent(revision, "", "  ")
+	if err != nil {
+		return createRevisionResponse{}, err
+	}
+	if err := writeJSONAtomic(h.projectRevisionFile(projectID, revision.ID), bytes); err != nil {
+		return createRevisionResponse{}, err
+	}
+
+	return createRevisionResponse{
+		Project:          projectID,
+		SuggestedMessage: buildSuggestedRevisionMessage(project.projectSnapshot, &revision.projectSnapshot),
+		Revision:         revisionMetaFromDocument(revision),
+	}, nil
+}
+
+func (h *hub) revertRevision(projectID, revisionID, clientID string) (projectResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+	revision, err := h.loadRevisionDocument(projectID, revisionID)
+	if err != nil {
+		return projectResponse{}, err
+	}
+
+	nextGlyphs, err := parseEntityArrayByID(revision.Glyphs, "glyphs")
+	if err != nil {
+		return projectResponse{}, err
+	}
+	nextSyntaxes, err := parseEntityArrayByID(revision.Syntaxes, "syntaxes")
+	if err != nil {
+		return projectResponse{}, err
+	}
+	nextMetrics, err := normalizedRawObject(revision.Metrics, "metrics")
+	if err != nil {
+		return projectResponse{}, err
+	}
+
+	var (
+		response    projectResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return projectResponse{}, err
+	}
+
+	sameGlyphs := entityRawMapsEqual(state.Glyphs, nextGlyphs)
+	sameSyntaxes := entityRawMapsEqual(state.Syntaxes, nextSyntaxes)
+	sameMetrics := string(state.Metrics) == string(nextMetrics)
+
+	if sameGlyphs && sameSyntaxes && sameMetrics {
+		response = projectResponseFromState(state)
+		h.mu.Unlock()
+		return response, nil
+	}
+
+	state.GlyphVersions = mergeVersionMap(state.GlyphVersions, nextGlyphs, state.Glyphs)
+	state.SyntaxVersions = mergeVersionMap(state.SyntaxVersions, nextSyntaxes, state.Syntaxes)
+	if !sameMetrics {
+		if state.MetricsVersion < 1 {
+			state.MetricsVersion = 1
+		} else {
+			state.MetricsVersion++
+		}
+	}
+
+	state.Glyphs = nextGlyphs
+	state.Syntaxes = nextSyntaxes
+	state.Metrics = nextMetrics
+	if err := applyProjectMutation(state, projectID); err != nil {
+		h.mu.Unlock()
+		return projectResponse{}, err
+	}
+
+	response = projectResponseFromState(state)
+	persistCopy = cloneProjectStateForPersist(state)
+	channels = collectSubscriberChannels(state)
+	event = &projectEvent{
+		Type:            "snapshot",
+		ClientID:        clientID,
+		projectDocument: state.Doc,
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return projectResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
 func collectSubscriberChannels(state *projectState) []chan projectEvent {
 	channels := make([]chan projectEvent, 0, len(state.Subs))
 	for ch := range state.Subs {
@@ -826,6 +1284,20 @@ func (h *hub) getProjectResponse(projectID string) (projectResponse, bool, error
 	}
 	h.mu.Unlock()
 	return resp, true, nil
+}
+
+func (h *hub) getOrCreateProjectResponse(projectID string) (projectResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		return projectResponse{}, err
+	}
+
+	return projectResponseFromState(state), nil
 }
 
 func (h *hub) subscribe(projectID string, out chan projectEvent) (projectDocument, bool, error) {
@@ -1493,7 +1965,7 @@ func (s *server) writeCORS(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 	}
 	w.Header().Set("Vary", "Origin")
-	w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,DELETE,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Last-Event-ID")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
@@ -1638,6 +2110,91 @@ func (s *server) handleProjectVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	if resp.Project == "" {
 		resp.Project = projectID
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *server) handleRevisions(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		resp, err := s.hub.getRevisions(projectID)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.Error(w, "project not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	case http.MethodPost:
+		defer r.Body.Close()
+		var req createRevisionRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.createRevision(projectID, req)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.Error(w, "project not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *server) handleRevisionRevert(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	defer r.Body.Close()
+	var req revertRevisionRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	resp, err := s.hub.revertRevision(projectID, req.ID, req.ClientID)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "revision not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1939,6 +2496,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/project", s.handleProject)
 	mux.HandleFunc("/api/project-version", s.handleProjectVersion)
+	mux.HandleFunc("/api/revisions", s.handleRevisions)
+	mux.HandleFunc("/api/revisions/revert", s.handleRevisionRevert)
 	mux.HandleFunc("/api/glyph", s.handleGlyph)
 	mux.HandleFunc("/api/syntax", s.handleSyntax)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
