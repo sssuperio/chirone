@@ -3,7 +3,14 @@ import { resolveUnicodeNumber } from './glyphName';
 import { isComponentGlyphName } from './structure';
 import { UNICODE } from './unicode';
 
-export type GlyphSetID = 'latin-base' | 'numbers' | 'punctuation' | 'components' | 'custom';
+export type GlyphSetID =
+	| 'latin-base'
+	| 'numbers'
+	| 'punctuation'
+	| 'symbols-simple'
+	| 'symbols'
+	| 'components'
+	| 'custom';
 
 export interface GlyphSetDefinition {
 	id: GlyphSetID;
@@ -31,6 +38,18 @@ const GLYPH_SET_MAP: Record<GlyphSetID, GlyphSetDefinition> = {
 		description: 'Punteggiatura ASCII',
 		canGenerate: true
 	},
+	'symbols-simple': {
+		id: 'symbols-simple',
+		label: 'Symbols (Simple)',
+		description: 'Frecce + simboli comuni',
+		canGenerate: true
+	},
+	symbols: {
+		id: 'symbols',
+		label: 'Symbols (Full)',
+		description: 'Intera sezione simboli Unicode',
+		canGenerate: true
+	},
 	components: {
 		id: 'components',
 		label: 'Components',
@@ -49,11 +68,51 @@ const GLYPH_SET_ORDER: Array<GlyphSetID> = [
 	'latin-base',
 	'numbers',
 	'punctuation',
+	'symbols-simple',
+	'symbols',
 	'components',
 	'custom'
 ];
 
 const generatedNamesBySet = new Map<GlyphSetID, Array<string>>();
+
+const SIMPLE_SYMBOL_RANGES: Array<readonly [number, number]> = [
+	[0x2190, 0x21ff], // Arrows
+	[0x25a0, 0x25ff], // Geometric shapes
+	[0x2600, 0x266f] // Common symbols (weather, stars, suits, music)
+];
+
+const FULL_SYMBOL_RANGES: Array<readonly [number, number]> = [
+	[0x20a0, 0x20cf], // Currency symbols
+	[0x2100, 0x214f], // Letterlike symbols
+	[0x2190, 0x21ff], // Arrows
+	[0x2200, 0x22ff], // Mathematical operators
+	[0x2300, 0x23ff], // Misc technical
+	[0x2460, 0x24ff], // Enclosed alphanumerics
+	[0x2500, 0x257f], // Box drawing
+	[0x2580, 0x259f], // Block elements
+	[0x25a0, 0x25ff], // Geometric shapes
+	[0x2600, 0x26ff], // Misc symbols
+	[0x2700, 0x27bf], // Dingbats
+	[0x27c0, 0x27ef], // Misc mathematical symbols-A
+	[0x27f0, 0x27ff], // Supplemental arrows-A
+	[0x2900, 0x297f], // Supplemental arrows-B
+	[0x2980, 0x29ff], // Misc mathematical symbols-B
+	[0x2a00, 0x2aff], // Supplemental mathematical operators
+	[0x2b00, 0x2bff] // Misc symbols and arrows
+];
+
+function isCodepointInRanges(codepoint: number, ranges: Array<readonly [number, number]>): boolean {
+	return ranges.some(([start, end]) => codepoint >= start && codepoint <= end);
+}
+
+function isSimpleSymbolCodepoint(codepoint: number): boolean {
+	return isCodepointInRanges(codepoint, SIMPLE_SYMBOL_RANGES);
+}
+
+function isFullSymbolCodepoint(codepoint: number): boolean {
+	return isCodepointInRanges(codepoint, FULL_SYMBOL_RANGES);
+}
 
 function classifyCodepoint(codepoint: number): GlyphSetID | undefined {
 	const isLatinBaseUpper = codepoint >= 0x41 && codepoint <= 0x5a;
@@ -75,7 +134,40 @@ function classifyCodepoint(codepoint: number): GlyphSetID | undefined {
 		return 'punctuation';
 	}
 
+	if (isSimpleSymbolCodepoint(codepoint)) {
+		return 'symbols-simple';
+	}
+
+	if (isFullSymbolCodepoint(codepoint)) {
+		return 'symbols';
+	}
+
 	return undefined;
+}
+
+function isCodepointInSet(setID: GlyphSetID, codepoint: number): boolean {
+	const isLatinBaseUpper = codepoint >= 0x41 && codepoint <= 0x5a;
+	const isLatinBaseLower = codepoint >= 0x61 && codepoint <= 0x7a;
+	const isAsciiPunctuation =
+		(codepoint >= 0x21 && codepoint <= 0x2f) ||
+		(codepoint >= 0x3a && codepoint <= 0x40) ||
+		(codepoint >= 0x5b && codepoint <= 0x60) ||
+		(codepoint >= 0x7b && codepoint <= 0x7e);
+
+	switch (setID) {
+		case 'latin-base':
+			return isLatinBaseUpper || isLatinBaseLower;
+		case 'numbers':
+			return codepoint >= 0x30 && codepoint <= 0x39;
+		case 'punctuation':
+			return isAsciiPunctuation;
+		case 'symbols-simple':
+			return isSimpleSymbolCodepoint(codepoint);
+		case 'symbols':
+			return isFullSymbolCodepoint(codepoint);
+		default:
+			return false;
+	}
 }
 
 export function getGlyphSetDefinitions(): Array<GlyphSetDefinition> {
@@ -127,7 +219,7 @@ export function getGlyphNamesForSet(setID: GlyphSetID): Array<string> {
 		.filter((glyphName) => {
 			const codepoint = resolveUnicodeNumber(glyphName);
 			if (codepoint === undefined) return false;
-			return classifyCodepoint(codepoint) === setID;
+			return isCodepointInSet(setID, codepoint);
 		})
 		.sort((a, b) => {
 			const aCodepoint = resolveUnicodeNumber(a) ?? 0;
