@@ -16,6 +16,11 @@
 	const dispatch = createEventDispatcher<{ change: { structure: string } }>();
 
 	export let selectedBrush = '';
+	let selectionAnchorRow = 0;
+	let selectionAnchorCol = 0;
+	let selectionFocusRow = 0;
+	let selectionFocusCol = 0;
+	let isAllSelected = false;
 	let drawingMode: 'paint' | 'erase' | null = null;
 	let activePointerId: number | null = null;
 	let lastPaintedCellKey = '';
@@ -31,8 +36,13 @@
 		new Set(brushes.filter((symbol) => typeof symbol === 'string' && symbol.length === 1))
 	);
 
-	$: gridRows = Math.max(minRows, contentRows || 1);
-	$: gridColumns = Math.max(minColumns, contentColumns || 1);
+	$: gridRows = Math.max(minRows, contentRows || 1, selectionAnchorRow + 1, selectionFocusRow + 1);
+	$: gridColumns = Math.max(
+		minColumns,
+		contentColumns || 1,
+		selectionAnchorCol + 1,
+		selectionFocusCol + 1
+	);
 	$: gridMatrix = Array.from({ length: gridRows }, (_, row) =>
 		Array.from({ length: gridColumns }, (_, col) => lines[row]?.[col] ?? ' ')
 	);
@@ -69,12 +79,89 @@
 		);
 	}
 
+	function setSelectedCell(row: number, col: number) {
+		const nextRow = Math.max(0, Number.isFinite(row) ? Math.trunc(row) : 0);
+		const nextCol = Math.max(0, Number.isFinite(col) ? Math.trunc(col) : 0);
+		selectionAnchorRow = nextRow;
+		selectionAnchorCol = nextCol;
+		selectionFocusRow = nextRow;
+		selectionFocusCol = nextCol;
+		isAllSelected = false;
+	}
+
+	type SelectionBounds = {
+		startRow: number;
+		endRow: number;
+		startCol: number;
+		endCol: number;
+	};
+
+	function getSelectionBounds(rowCount = gridRows, columnCount = gridColumns): SelectionBounds {
+		if (isAllSelected) {
+			return {
+				startRow: 0,
+				endRow: Math.max(0, rowCount - 1),
+				startCol: 0,
+				endCol: Math.max(0, columnCount - 1)
+			};
+		}
+
+		return {
+			startRow: Math.min(selectionAnchorRow, selectionFocusRow),
+			endRow: Math.max(selectionAnchorRow, selectionFocusRow),
+			startCol: Math.min(selectionAnchorCol, selectionFocusCol),
+			endCol: Math.max(selectionAnchorCol, selectionFocusCol)
+		};
+	}
+
+	function hasRangeSelection(): boolean {
+		return (
+			isAllSelected ||
+			selectionAnchorRow !== selectionFocusRow ||
+			selectionAnchorCol !== selectionFocusCol
+		);
+	}
+
+	function isCellInSelection(row: number, col: number): boolean {
+		const bounds = getSelectionBounds();
+		return (
+			row >= bounds.startRow &&
+			row <= bounds.endRow &&
+			col >= bounds.startCol &&
+			col <= bounds.endCol
+		);
+	}
+
 	function updateCell(row: number, col: number, value: string) {
-		const matrix = createEditableMatrix(gridRows, gridColumns);
+		const matrix = createEditableMatrix(
+			Math.max(gridRows, row + 1),
+			Math.max(gridColumns, col + 1)
+		);
 
 		matrix[row][col] = value;
 		structure = replaceGlyphStructureBody(structure, serialize(matrix));
 		dispatch('change', { structure });
+	}
+
+	function updateStructureFromMatrix(matrix: Array<Array<string>>) {
+		structure = replaceGlyphStructureBody(structure, serialize(matrix));
+		dispatch('change', { structure });
+	}
+
+	function fillSelection(value: string) {
+		const bounds = getSelectionBounds();
+		const matrix = createEditableMatrix(
+			Math.max(gridRows, bounds.endRow + 1),
+			Math.max(gridColumns, bounds.endCol + 1)
+		);
+
+		for (let row = bounds.startRow; row <= bounds.endRow; row++) {
+			for (let col = bounds.startCol; col <= bounds.endCol; col++) {
+				matrix[row][col] = value;
+			}
+		}
+
+		updateStructureFromMatrix(matrix);
 	}
 
 	function serialize(matrix: Array<Array<string>>): string {
@@ -100,6 +187,7 @@
 	}
 
 	function onPointerDown(row: number, col: number, event: PointerEvent) {
+		setSelectedCell(row, col);
 		drawingMode = event.button === 2 || event.altKey ? 'erase' : 'paint';
 		activePointerId = event.pointerId;
 		lastPaintedCellKey = '';
@@ -129,6 +217,7 @@
 	}
 
 	function onTouchStart(row: number, col: number) {
+		setSelectedCell(row, col);
 		drawingMode = 'paint';
 		activePointerId = null;
 		lastPaintedCellKey = '';
@@ -148,6 +237,166 @@
 		const col = Number(cell.dataset.col);
 		if (Number.isNaN(row) || Number.isNaN(col)) return;
 		paintCellWithMode(row, col);
+	}
+
+	function isTypingTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tagName = target.tagName.toLowerCase();
+		if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+		return target.isContentEditable;
+	}
+
+	function placeSymbolAtSelection(symbol: string) {
+		if (hasRangeSelection()) {
+			fillSelection(symbol);
+			if (symbol !== ' ' && symbol.length === 1 && availableBrushes.includes(symbol)) {
+				selectedBrush = symbol;
+			}
+			return;
+		}
+
+		updateCell(selectionFocusRow, selectionFocusCol, symbol);
+		setSelectedCell(selectionFocusRow, selectionFocusCol + 1);
+		if (symbol !== ' ' && symbol.length === 1 && availableBrushes.includes(symbol)) {
+			selectedBrush = symbol;
+		}
+	}
+
+	function handleBackspace() {
+		if (hasRangeSelection()) {
+			const bounds = getSelectionBounds();
+			fillSelection(' ');
+			setSelectedCell(bounds.startRow, bounds.startCol);
+			return;
+		}
+
+		const targetRow = selectionFocusCol > 0 ? selectionFocusRow : Math.max(0, selectionFocusRow - 1);
+		const targetCol = selectionFocusCol > 0 ? selectionFocusCol - 1 : 0;
+		updateCell(targetRow, targetCol, ' ');
+		setSelectedCell(targetRow, targetCol);
+	}
+
+	function handleDelete() {
+		if (hasRangeSelection()) {
+			fillSelection(' ');
+			return;
+		}
+		updateCell(selectionFocusRow, selectionFocusCol, ' ');
+	}
+
+	function handleEnter() {
+		if (isAllSelected) {
+			isAllSelected = false;
+		}
+
+		if (selectionFocusRow === 0 && selectionFocusCol === 0) {
+			const width = Math.max(
+				1,
+				gridColumns,
+				Math.max(0, ...editableLines.map((line) => line.length)) || 1
+			);
+			const rowCount = Math.max(1, editableLines.length) + 1;
+			const matrix = Array.from({ length: rowCount }, (_, row) => {
+				if (row === 0) return Array.from({ length: width }, () => ' ');
+				return Array.from({ length: width }, (_, col) => editableLines[row - 1]?.[col] ?? ' ');
+			});
+			updateStructureFromMatrix(matrix);
+			setSelectedCell(1, 0);
+			return;
+		}
+
+		setSelectedCell(selectionFocusRow + 1, 0);
+	}
+
+	function getArrowDelta(key: string): { row: number; col: number } | undefined {
+		if (key === 'ArrowUp') return { row: -1, col: 0 };
+		if (key === 'ArrowDown') return { row: 1, col: 0 };
+		if (key === 'ArrowLeft') return { row: 0, col: -1 };
+		if (key === 'ArrowRight') return { row: 0, col: 1 };
+		return undefined;
+	}
+
+	function extendSelection(deltaRow: number, deltaCol: number) {
+		if (isAllSelected) {
+			isAllSelected = false;
+		}
+		selectionFocusRow = Math.max(0, selectionFocusRow + deltaRow);
+		selectionFocusCol = Math.max(0, selectionFocusCol + deltaCol);
+	}
+
+	function displaceSelection(deltaRow: number, deltaCol: number) {
+		if (isAllSelected) return;
+
+		const bounds = getSelectionBounds();
+		let nextDeltaRow = deltaRow;
+		let nextDeltaCol = deltaCol;
+
+		if (nextDeltaRow < 0 && bounds.startRow + nextDeltaRow < 0) {
+			nextDeltaRow = -bounds.startRow;
+		}
+		if (nextDeltaCol < 0 && bounds.startCol + nextDeltaCol < 0) {
+			nextDeltaCol = -bounds.startCol;
+		}
+
+		selectionAnchorRow = Math.max(0, selectionAnchorRow + nextDeltaRow);
+		selectionAnchorCol = Math.max(0, selectionAnchorCol + nextDeltaCol);
+		selectionFocusRow = Math.max(0, selectionFocusRow + nextDeltaRow);
+		selectionFocusCol = Math.max(0, selectionFocusCol + nextDeltaCol);
+	}
+
+	function onKeyDown(event: KeyboardEvent) {
+		if (!showGrid) return;
+		if (event.defaultPrevented) return;
+		if (isTypingTarget(event.target)) return;
+
+		const key = event.key;
+		const normalizedKey = key.toLowerCase();
+
+		if ((event.ctrlKey || event.metaKey) && !event.altKey && normalizedKey === 'a') {
+			event.preventDefault();
+			isAllSelected = true;
+			return;
+		}
+
+		const arrowDelta = getArrowDelta(key);
+		if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && arrowDelta) {
+			event.preventDefault();
+			displaceSelection(arrowDelta.row, arrowDelta.col);
+			return;
+		}
+
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+		if (event.shiftKey && arrowDelta) {
+			event.preventDefault();
+			extendSelection(arrowDelta.row, arrowDelta.col);
+			return;
+		}
+
+		if (arrowDelta) {
+			event.preventDefault();
+			setSelectedCell(selectionFocusRow + arrowDelta.row, selectionFocusCol + arrowDelta.col);
+			return;
+		}
+		if (key === 'Enter') {
+			event.preventDefault();
+			handleEnter();
+			return;
+		}
+		if (key === 'Backspace') {
+			event.preventDefault();
+			handleBackspace();
+			return;
+		}
+		if (key === 'Delete') {
+			event.preventDefault();
+			handleDelete();
+			return;
+		}
+		if (key.length === 1) {
+			event.preventDefault();
+			placeSymbolAtSelection(key);
+		}
 	}
 
 	const componentPalette = [
@@ -213,6 +462,7 @@
 </script>
 
 <svelte:window
+	on:keydown={onKeyDown}
 	on:pointermove={onPointerMove}
 	on:pointerup={stopDrawing}
 	on:pointercancel={stopDrawing}
@@ -274,20 +524,23 @@
 				class="grid w-max border border-slate-300 bg-white"
 				style={`grid-template-columns: repeat(${gridColumns}, 2rem);`}
 			>
-				{#each Array.from({ length: gridRows }) as _, row}
-					{#each Array.from({ length: gridColumns }) as __, col}
+				{#each Array.from({ length: gridRows }, (_, rowIndex) => rowIndex) as row}
+					{#each Array.from({ length: gridColumns }, (_, colIndex) => colIndex) as col}
 						{@const cellValue = gridMatrix[row][col]}
 						{@const overlayValue = overlayMatrix[row][col]}
 						{@const componentSources = componentSourceMatrix[row][col]}
-						{@const isComponentCell = componentSources.length > 0}
-						{@const isOverlayCell = overlayValue !== ' '}
-						{@const isOverriddenComponentCell = isComponentCell && isOverlayCell}
-						{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
-						<button
-							type="button"
-							data-grid-cell="true"
-								data-row={row}
-								data-col={col}
+							{@const isComponentCell = componentSources.length > 0}
+							{@const isOverlayCell = overlayValue !== ' '}
+							{@const isOverriddenComponentCell = isComponentCell && isOverlayCell}
+							{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
+							{@const isSelectedCell = selectionFocusRow === row && selectionFocusCol === col}
+							{@const isSelectionHighlightCell =
+								(isAllSelected || (hasRangeSelection() && isCellInSelection(row, col))) && !isSelectedCell}
+							<button
+								type="button"
+								data-grid-cell="true"
+									data-row={row}
+									data-col={col}
 							style={`touch-action: none;${
 								isComponentCell && !isOverriddenComponentCell && componentColor
 									? ` color: ${componentColor};`
@@ -297,14 +550,19 @@
 									? ` background-color: color-mix(in srgb, ${componentColor} 26%, white);`
 									: ''
 							}`}
-							class={`relative w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 hover:bg-blue-100 ${
-								isOverriddenComponentCell
-									? 'shadow-[inset_0_0_0_1px_rgba(217,119,6,0.6)]'
-									: 'bg-white'
+								class={`relative w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 hover:bg-blue-100 ${
+									isSelectionHighlightCell
+										? 'bg-sky-50 shadow-[inset_0_0_0_1px_rgba(14,116,144,0.28)]'
+										: isOverriddenComponentCell
+											? 'shadow-[inset_0_0_0_1px_rgba(217,119,6,0.6)]'
+											: 'bg-white'
 							}`}
 							on:pointerdown={(event) => onPointerDown(row, col, event)}
 							on:touchstart|preventDefault={() => onTouchStart(row, col)}
-							on:contextmenu|preventDefault={(event) => paintCell(row, col, true)}
+							on:contextmenu|preventDefault={() => {
+								setSelectedCell(row, col);
+								paintCell(row, col, true);
+							}}
 						>
 							{#if cellValue === ' '}
 								<span class="text-slate-300">·</span>
@@ -320,12 +578,19 @@
 											rule={rulesBySymbol[cellValue]}
 											className="relative z-10 h-full w-full p-1"
 										/>
+										<span
+											class="pointer-events-none absolute bottom-0.5 right-0.5 z-20 select-none font-mono text-[9px] font-bold leading-none text-slate-800"
+											>{cellValue}</span
+										>
 									</div>
 								{/if}
 							{:else}
 								<span class={isComponentCell ? 'font-mono text-slate-800' : 'font-mono text-red-500'}
 									>{cellValue}</span
 								>
+							{/if}
+							{#if isSelectedCell}
+								<span class="grid-caret pointer-events-none absolute inset-0 z-30"></span>
 							{/if}
 							{#if isOverriddenComponentCell}
 								<span
@@ -339,3 +604,22 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.grid-caret {
+		border: 2px solid rgb(37 99 235);
+		box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.7);
+		animation: grid-caret-blink 1s steps(1, end) infinite;
+	}
+
+	@keyframes grid-caret-blink {
+		0%,
+		49% {
+			opacity: 1;
+		}
+		50%,
+		100% {
+			opacity: 0.3;
+		}
+	}
+</style>

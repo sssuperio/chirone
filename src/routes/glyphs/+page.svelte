@@ -853,6 +853,20 @@
 				const key = event.key;
 				const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
 				const normalizedKey = key.toLowerCase();
+
+				const isVisualEditorKeyboardKey =
+					activeGlyphEditorTab === 'visualDesign' &&
+					!event.ctrlKey &&
+					!event.metaKey &&
+					!event.altKey &&
+					(key.length === 1 ||
+						key === 'Backspace' ||
+						key === 'Delete' ||
+						key === 'Enter' ||
+						key.startsWith('Arrow'));
+				if (isVisualEditorKeyboardKey) {
+					return;
+				}
 				if (plain && normalizedKey === 'r') {
 					event.preventDefault();
 					rotateSelectedGlyphClockwise();
