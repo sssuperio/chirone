@@ -5,10 +5,12 @@
 	import { parseGlyphStructure } from '$lib/GTL/structure';
 	import { getUnicodeNumber } from '$lib/GTL/unicode';
 	import FontGenerator from './fontGenerator.svelte';
+	import StylisticSetPreview from '$lib/components/glyph/stylisticSetPreview.svelte';
 
 	//
 
 	export let showTitle = true;
+	export let showStylisticSets = true;
 	export let title = 'Anteprima';
 	export let compact = false;
 	export let canvasWidth = 300;
@@ -89,5 +91,9 @@
 					{/if}
 				</FontGenerator>
 			{/each}
+
+		{#if showStylisticSets}
+			<StylisticSetPreview glyph={currentGlyph} {canvasWidth} canvasHeight={Math.floor(canvasHeight / 2)} />
+		{/if}
 	{/if}
 </div>
