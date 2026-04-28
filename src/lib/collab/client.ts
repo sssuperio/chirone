@@ -1,4 +1,5 @@
 import { get, writable } from 'svelte/store';
+import { env } from '$env/dynamic/public';
 import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
 import type { FontMetrics } from '$lib/GTL/metrics';
 import { normalizeFontMetrics } from '$lib/GTL/metrics';
@@ -60,39 +61,110 @@ type CollabStatus = {
 	message: string;
 };
 
+type CollabConfig = {
+	server: string;
+	base: string;
+	enabled: boolean;
+};
+
 type AppSHAResponse = {
+	version: string;
 	sha: string;
 };
 
-const collabServer = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() ?? '';
-const collabProjectDefault = sanitizeProjectID(
-	(import.meta.env.VITE_COLLAB_PROJECT as string | undefined)?.trim() || 'default'
+const collabServerDefault = normalizeCollabServer(
+	(env.PUBLIC_CHIRONE_SYNC_API_BASE ?? '').trim()
 );
-const collabEnabled = collabServer.length > 0;
-const collabServerBase = collabServer.replace(/\/+$/g, '');
-const collabProjectStorageKey = 'chirone-collab-project';
+const collabServerOverrideAllowed =
+	(env.PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE ?? '').trim() === 'true';
+const collabProjectDefault = sanitizeProjectID(
+	(env.PUBLIC_CHIRONE_SYNC_PROJECT ?? '').trim() || 'default'
+);
+const syncAPIBaseStorageKey = 'chirone-sync-api-base';
+const syncProjectStorageKey = 'chirone-sync-project';
+const legacyCollabServerStorageKey = 'chirone-collab-server';
+const legacyCollabProjectStorageKey = 'chirone-collab-project';
+let activeCollabServer = loadCollabServer(collabServerDefault);
 let activeCollabProject = loadCollabProject(collabProjectDefault);
 let runtimeStop: (() => void) | null = null;
 
 const initialStatus = buildInitialStatus(activeCollabProject);
 
 export const collabStatus = writable<CollabStatus>(initialStatus);
-export const collabServerSHA = writable<string>(collabEnabled ? 'loading' : 'n/a');
+export const collabConfig = writable<CollabConfig>(currentCollabConfig());
+export const appVersion = writable<string>('loading');
+export const collabServerSHA = writable<string>(currentCollabConfig().enabled ? 'loading' : 'n/a');
+export const canOverrideCollabServer = collabServerOverrideAllowed;
 
 let singletonStop: (() => void) | null = null;
 
+function collabVersionURL(serverBase?: string): string {
+	const trimmed = (serverBase ?? '').trim().replace(/\/+$/g, '');
+	return trimmed ? `${trimmed}/api/version` : '/api/version';
+}
+
 function sanitizeProjectID(raw: string): string {
 	return /^[a-zA-Z0-9_-]+$/.test(raw) ? raw : 'default';
+}
+
+function normalizeCollabServer(raw: string): string {
+	const trimmed = raw.trim();
+	if (!trimmed) return '';
+	if (trimmed === '/') return '/';
+	return trimmed.replace(/\/+$/g, '');
+}
+
+function buildCollabConfig(server: string): CollabConfig {
+	const normalized = normalizeCollabServer(server);
+	if (!normalized) {
+		return {
+			server: '',
+			base: '',
+			enabled: false
+		};
+	}
+	if (normalized === '/') {
+		return {
+			server: '/',
+			base: '',
+			enabled: true
+		};
+	}
+	return {
+		server: normalized,
+		base: normalized,
+		enabled: true
+	};
+}
+
+function currentCollabConfig(): CollabConfig {
+	return buildCollabConfig(activeCollabServer);
 }
 
 function isObjectRecord(input: unknown): input is Record<string, unknown> {
 	return typeof input === 'object' && input !== null;
 }
 
+function loadCollabServer(defaultServer: string): string {
+	if (!collabServerOverrideAllowed) return defaultServer;
+	if (typeof window === 'undefined') return defaultServer;
+	try {
+		const raw =
+			window.localStorage.getItem(syncAPIBaseStorageKey) ??
+			window.localStorage.getItem(legacyCollabServerStorageKey);
+		if (raw === null) return defaultServer;
+		return normalizeCollabServer(raw);
+	} catch {
+		return defaultServer;
+	}
+}
+
 function loadCollabProject(defaultProject: string): string {
 	if (typeof window === 'undefined') return defaultProject;
 	try {
-		const raw = window.localStorage.getItem(collabProjectStorageKey);
+		const raw =
+			window.localStorage.getItem(syncProjectStorageKey) ??
+			window.localStorage.getItem(legacyCollabProjectStorageKey);
 		if (!raw) return defaultProject;
 		return sanitizeProjectID(raw.trim() || defaultProject);
 	} catch {
@@ -100,25 +172,76 @@ function loadCollabProject(defaultProject: string): string {
 	}
 }
 
+function persistCollabServer(server: string) {
+	if (!collabServerOverrideAllowed) return;
+	if (typeof window === 'undefined') return;
+	try {
+		if (server) {
+			window.localStorage.setItem(syncAPIBaseStorageKey, server);
+		} else {
+			window.localStorage.removeItem(syncAPIBaseStorageKey);
+		}
+		window.localStorage.removeItem(legacyCollabServerStorageKey);
+	} catch {
+		// Ignore storage failures; runtime server still changes in-memory.
+	}
+}
+
 function persistCollabProject(project: string) {
 	if (typeof window === 'undefined') return;
 	try {
-		window.localStorage.setItem(collabProjectStorageKey, project);
+		window.localStorage.setItem(syncProjectStorageKey, project);
+		window.localStorage.removeItem(legacyCollabProjectStorageKey);
 	} catch {
 		// Ignore storage failures; runtime project still changes in-memory.
 	}
 }
 
 function buildInitialStatus(project: string): CollabStatus {
+	const config = currentCollabConfig();
 	return {
-		enabled: collabEnabled,
-		state: collabEnabled ? 'connecting' : 'disabled',
+		enabled: config.enabled,
+		state: config.enabled ? 'connecting' : 'disabled',
 		project,
 		version: 0,
-		message: collabEnabled
+		message: config.enabled
 			? 'Connecting to collaboration server...'
-			: 'Collaboration disabled (set VITE_COLLAB_SERVER)'
+			: collabServerOverrideAllowed
+				? 'Collaboration disabled (set sync backend in Settings or PUBLIC_CHIRONE_SYNC_API_BASE)'
+				: 'Collaboration disabled (set PUBLIC_CHIRONE_SYNC_API_BASE)'
 	};
+}
+
+function coerceVersionResponse(input: unknown): AppSHAResponse | null {
+	if (!isObjectRecord(input)) return null;
+	if (typeof input.sha !== 'string') return null;
+	if (typeof input.version !== 'string') return null;
+	const sha = input.sha.trim();
+	const version = input.version.trim();
+	if (!sha || !version) return null;
+	return { sha, version };
+}
+
+async function loadVersionInfo(versionURL: string) {
+	try {
+		const response = await fetch(versionURL, { cache: 'no-store' });
+		if (!response.ok) {
+			appVersion.set('unknown');
+			collabServerSHA.set('unknown');
+			return;
+		}
+		const payload = (await response.json()) as unknown;
+		const parsed = coerceVersionResponse(payload);
+		appVersion.set(parsed?.version ?? 'unknown');
+		collabServerSHA.set(parsed?.sha ?? 'unknown');
+	} catch {
+		appVersion.set('unknown');
+		collabServerSHA.set('unknown');
+	}
+}
+
+export function initAppVersionInfo() {
+	void loadVersionInfo(collabVersionURL(currentCollabConfig().base));
 }
 
 function stableStringify(input: unknown): string {
@@ -270,7 +393,8 @@ function coerceEntityEvent(input: unknown): EntityEvent | null {
 
 	const entityId = typeof input.entityId === 'string' ? input.entityId : undefined;
 	const clientId = typeof input.clientId === 'string' ? input.clientId : undefined;
-	const version = typeof input.version === 'number' && Number.isFinite(input.version) ? input.version : 0;
+	const version =
+		typeof input.version === 'number' && Number.isFinite(input.version) ? input.version : 0;
 
 	return {
 		type,
@@ -311,16 +435,47 @@ export function initCollabSync(): () => void {
 		};
 	}
 
-		if (!runtimeStop) {
-			if (!collabEnabled) {
-				collabStatus.set(buildInitialStatus(activeCollabProject));
-				collabServerSHA.set('n/a');
-			} else {
-				runtimeStop = startCollabRuntime(collabServerBase, activeCollabProject);
-			}
+	if (!runtimeStop) {
+		const config = currentCollabConfig();
+		if (!config.enabled) {
+			collabStatus.set(buildInitialStatus(activeCollabProject));
+			collabServerSHA.set('n/a');
+		} else {
+			runtimeStop = startCollabRuntime(config.base, activeCollabProject);
 		}
+	}
 
 	return singletonStop;
+}
+
+export function setCollabServer(nextServerRaw: string): string {
+	if (!collabServerOverrideAllowed) return activeCollabServer;
+	const nextServer = normalizeCollabServer(nextServerRaw);
+	if (nextServer === activeCollabServer) return nextServer;
+
+	activeCollabServer = nextServer;
+	persistCollabServer(activeCollabServer);
+	const config = currentCollabConfig();
+	collabConfig.set(config);
+
+	if (singletonStop) {
+		stopRuntime();
+		if (config.enabled) {
+			runtimeStop = startCollabRuntime(config.base, activeCollabProject);
+		} else {
+			collabStatus.set(buildInitialStatus(activeCollabProject));
+			collabServerSHA.set('n/a');
+		}
+	} else {
+		collabStatus.set(buildInitialStatus(activeCollabProject));
+		if (!config.enabled) {
+			collabServerSHA.set('n/a');
+		}
+	}
+
+	initAppVersionInfo();
+
+	return nextServer;
 }
 
 export function setCollabProject(nextProjectRaw: string): string {
@@ -332,8 +487,9 @@ export function setCollabProject(nextProjectRaw: string): string {
 
 	if (singletonStop) {
 		stopRuntime();
-		if (collabEnabled) {
-			runtimeStop = startCollabRuntime(collabServerBase, activeCollabProject);
+		const config = currentCollabConfig();
+		if (config.enabled) {
+			runtimeStop = startCollabRuntime(config.base, activeCollabProject);
 		} else {
 			collabStatus.set(buildInitialStatus(activeCollabProject));
 		}
@@ -404,29 +560,6 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		});
 	};
 
-	const coerceSHAResponse = (input: unknown): AppSHAResponse | null => {
-		if (!isObjectRecord(input)) return null;
-		if (typeof input.sha !== 'string') return null;
-		const sha = input.sha.trim();
-		if (!sha) return null;
-		return { sha };
-	};
-
-	const loadServerSHA = async () => {
-		try {
-			const response = await fetch(shaURL, { cache: 'no-store' });
-			if (!response.ok) {
-				collabServerSHA.set('unknown');
-				return;
-			}
-			const payload = (await response.json()) as unknown;
-			const parsed = coerceSHAResponse(payload);
-			collabServerSHA.set(parsed?.sha ?? 'unknown');
-		} catch {
-			collabServerSHA.set('unknown');
-		}
-	};
-
 	const ensureSelectedGlyph = (nextGlyphs: Array<GlyphInput>) => {
 		const currentSelectedGlyph = get(selectedGlyph);
 		if (currentSelectedGlyph && !nextGlyphs.some((glyph) => glyph.id === currentSelectedGlyph)) {
@@ -444,11 +577,16 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 
 	const refreshLocalHashes = () => {
 		knownGlyphHashes = new Map(get(glyphs).map((glyph) => [glyph.id, stableStringify(glyph)]));
-		knownSyntaxHashes = new Map(get(syntaxes).map((syntax) => [syntax.id, stableStringify(syntax)]));
+		knownSyntaxHashes = new Map(
+			get(syntaxes).map((syntax) => [syntax.id, stableStringify(syntax)])
+		);
 		knownMetricsHash = stableStringify(get(metrics));
 	};
 
-	const applyVersionMapsFromSnapshot = (snapshot: FontProjectSnapshot, response?: ProjectResponse) => {
+	const applyVersionMapsFromSnapshot = (
+		snapshot: FontProjectSnapshot,
+		response?: ProjectResponse
+	) => {
 		if (response) {
 			glyphVersions = new Map(Object.entries(response.glyphVersions ?? {}));
 			syntaxVersions = new Map(Object.entries(response.syntaxVersions ?? {}));
@@ -488,7 +626,11 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		clearPendingOps();
 	};
 
-	const applyRemoteGlyphUpsert = (glyph: GlyphInput, entityVersion: number, globalVersion: number) => {
+	const applyRemoteGlyphUpsert = (
+		glyph: GlyphInput,
+		entityVersion: number,
+		globalVersion: number
+	) => {
 		const current = get(glyphs);
 		const index = current.findIndex((item) => item.id === glyph.id);
 		const next = [...current];
@@ -510,7 +652,11 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		refreshLocalHashes();
 	};
 
-	const applyRemoteGlyphDelete = (glyphID: string, _entityVersion: number, globalVersion: number) => {
+	const applyRemoteGlyphDelete = (
+		glyphID: string,
+		_entityVersion: number,
+		globalVersion: number
+	) => {
 		const next = get(glyphs).filter((item) => item.id !== glyphID);
 		isApplyingRemote = true;
 		glyphs.set(next);
@@ -524,7 +670,11 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		refreshLocalHashes();
 	};
 
-	const applyRemoteSyntaxUpsert = (syntax: Syntax, entityVersion: number, globalVersion: number) => {
+	const applyRemoteSyntaxUpsert = (
+		syntax: Syntax,
+		entityVersion: number,
+		globalVersion: number
+	) => {
 		const current = get(syntaxes);
 		const index = current.findIndex((item) => item.id === syntax.id);
 		const next = [...current];
@@ -545,7 +695,11 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		refreshLocalHashes();
 	};
 
-	const applyRemoteSyntaxDelete = (syntaxID: string, _entityVersion: number, globalVersion: number) => {
+	const applyRemoteSyntaxDelete = (
+		syntaxID: string,
+		_entityVersion: number,
+		globalVersion: number
+	) => {
 		const next = get(syntaxes).filter((item) => item.id !== syntaxID);
 		isApplyingRemote = true;
 		syntaxes.set(next);
@@ -558,7 +712,11 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		refreshLocalHashes();
 	};
 
-	const applyRemoteMetricsUpdate = (nextMetrics: FontMetrics, entityVersion: number, globalVersion: number) => {
+	const applyRemoteMetricsUpdate = (
+		nextMetrics: FontMetrics,
+		entityVersion: number,
+		globalVersion: number
+	) => {
 		isApplyingRemote = true;
 		metrics.set(nextMetrics);
 		isApplyingRemote = false;
@@ -672,7 +830,9 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			return { type: 'glyph_delete', id: glyphDelete };
 		}
 
-		const glyphUpsert = pendingGlyphUpserts.entries().next().value as [string, GlyphInput] | undefined;
+		const glyphUpsert = pendingGlyphUpserts.entries().next().value as
+			| [string, GlyphInput]
+			| undefined;
 		if (glyphUpsert) {
 			pendingGlyphUpserts.delete(glyphUpsert[0]);
 			return { type: 'glyph_upsert', id: glyphUpsert[0], glyph: cloneGlyph(glyphUpsert[1]) };
@@ -684,7 +844,9 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			return { type: 'syntax_delete', id: syntaxDelete };
 		}
 
-		const syntaxUpsert = pendingSyntaxUpserts.entries().next().value as [string, Syntax] | undefined;
+		const syntaxUpsert = pendingSyntaxUpserts.entries().next().value as
+			| [string, Syntax]
+			| undefined;
 		if (syntaxUpsert) {
 			pendingSyntaxUpserts.delete(syntaxUpsert[0]);
 			return { type: 'syntax_upsert', id: syntaxUpsert[0], syntax: cloneSyntax(syntaxUpsert[1]) };
@@ -1066,7 +1228,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const bootstrap = async () => {
 		let loadedRemote = false;
 		setStatus('connecting', `Loading project "${projectID}"...`);
-		void loadServerSHA();
+		void loadVersionInfo(shaURL);
 
 		try {
 			const response = await fetch(projectURL, { cache: 'no-store' });

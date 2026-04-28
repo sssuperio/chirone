@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,20 @@ import (
 	"sync"
 	"time"
 )
+
+var version = "dev"
+
+//go:embed all:web/dist
+var embeddedAssets embed.FS
+
+var embeddedUI fs.FS
+
+func init() {
+	sub, err := fs.Sub(embeddedAssets, "web/dist")
+	if err == nil {
+		embeddedUI = sub
+	}
+}
 
 type projectSnapshot struct {
 	Glyphs   json.RawMessage `json:"glyphs"`
@@ -158,8 +174,9 @@ type revertRevisionRequest struct {
 	ID       string `json:"id"`
 }
 
-type appSHAResponse struct {
-	SHA string `json:"sha"`
+type appVersionResponse struct {
+	Version string `json:"version"`
+	SHA     string `json:"sha"`
 }
 
 func (e *versionConflictError) Error() string {
@@ -1897,6 +1914,8 @@ type server struct {
 	hub         *hub
 	allowOrigin string
 	uiDir       string
+	uiFS        fs.FS
+	appVersion  string
 	appSHA      string
 }
 
@@ -1984,8 +2003,9 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
-		"sha":    s.appSHA,
+		"status":  "ok",
+		"version": s.appVersion,
+		"sha":     s.appSHA,
 	})
 }
 
@@ -2000,7 +2020,10 @@ func (s *server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(appSHAResponse{SHA: s.appSHA})
+	_ = json.NewEncoder(w).Encode(appVersionResponse{
+		Version: s.appVersion,
+		SHA:     s.appSHA,
+	})
 }
 
 func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) error {
@@ -2436,9 +2459,28 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
+func fileExistsFS(fsys fs.FS, path string) bool {
+	if fsys == nil {
+		return false
+	}
+	info, err := fs.Stat(fsys, path)
 	return err == nil && !info.IsDir()
+}
+
+func embeddedUIAvailable() bool {
+	return fileExistsFS(embeddedUI, "index.html")
+}
+
+func resolveUIFS(uiDir string) fs.FS {
+	uiDir = strings.TrimSpace(uiDir)
+	switch {
+	case uiDir != "":
+		return os.DirFS(uiDir)
+	case embeddedUIAvailable():
+		return embeddedUI
+	default:
+		return nil
+	}
 }
 
 func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
@@ -2447,7 +2489,7 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.uiDir == "" {
+	if s.uiFS == nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -2459,11 +2501,10 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serveIfExists := func(path string) bool {
-		target := filepath.Join(s.uiDir, filepath.FromSlash(path))
-		if !fileExists(target) {
+		if !fileExistsFS(s.uiFS, path) {
 			return false
 		}
-		http.ServeFile(w, r, target)
+		http.ServeFileFS(w, r, s.uiFS, path)
 		return true
 	}
 
@@ -2503,7 +2544,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/events", s.handleEvents)
 
-	if s.uiDir != "" {
+	if s.uiFS != nil {
 		mux.HandleFunc("/", s.handleUI)
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -2517,7 +2558,7 @@ func (s *server) routes() http.Handler {
 				return
 			}
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte(fmt.Sprintf("chirone collab server (%s)\n", s.appSHA)))
+			_, _ = w.Write([]byte(fmt.Sprintf("chirone %s (%s)\n", s.appVersion, s.appSHA)))
 		})
 	}
 
@@ -2533,10 +2574,13 @@ func requestLogger(next http.Handler) http.Handler {
 }
 
 func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
+	resolvedUIDir := strings.TrimSpace(uiDir)
 	srv := &server{
 		hub:         newHub(dataDir),
 		allowOrigin: allowOrigin,
-		uiDir:       strings.TrimSpace(uiDir),
+		uiDir:       resolvedUIDir,
+		uiFS:        resolveUIFS(resolvedUIDir),
+		appVersion:  version,
 		appSHA:      resolveGitSHA(),
 	}
 
@@ -2553,22 +2597,80 @@ func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
 	}()
 
 	if srv.uiDir != "" {
-		log.Printf("collab server listening on %s (data dir: %s, ui dir: %s)", addr, dataDir, srv.uiDir)
+		log.Printf("chirone listening on %s (data dir: %s, ui dir override: %s)", addr, dataDir, srv.uiDir)
+	} else if srv.uiFS != nil {
+		log.Printf("chirone listening on %s (data dir: %s, ui: embedded)", addr, dataDir)
 	} else {
-		log.Printf("collab server listening on %s (data dir: %s)", addr, dataDir)
+		log.Printf("chirone listening on %s (data dir: %s, ui: unavailable)", addr, dataDir)
 	}
 	return httpServer.ListenAndServe()
 }
 
-func main() {
-	addr := flag.String("addr", ":8090", "address to listen on")
-	dataDir := flag.String("data-dir", "./data", "directory where project snapshots are stored")
-	allowOrigin := flag.String("allow-origin", "*", "CORS allowed origin (or * for all)")
-	uiDir := flag.String("ui-dir", "", "optional directory to serve static UI files from")
-	flag.Parse()
+func serveCommand(args []string) error {
+	flags := flag.NewFlagSet("chirone", flag.ContinueOnError)
+	flags.Usage = printUsage
 
+	addr := flags.String("addr", ":8090", "address to listen on")
+	dataDir := flags.String("data-dir", "./data", "directory where project snapshots are stored")
+	allowOrigin := flags.String("allow-origin", "*", "CORS allowed origin (or * for all)")
+	uiDir := flags.String("ui-dir", "", "optional directory to serve static UI files from instead of embedded assets")
+
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
+	}
 	ctx := context.Background()
 	if err := run(ctx, *addr, *dataDir, *allowOrigin, *uiDir); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		return err
+	}
+	return nil
+}
+
+func runCLI(args []string) error {
+	switch {
+	case len(args) == 0:
+		return serveCommand(nil)
+	case args[0] == "help" || args[0] == "-h" || args[0] == "--help":
+		printUsage()
+		return nil
+	case args[0] == "version" || args[0] == "--version":
+		fmt.Println(version)
+		return nil
+	case args[0] == "serve":
+		return serveCommand(args[1:])
+	default:
+		return serveCommand(args)
+	}
+}
+
+func printUsage() {
+	fmt.Print(`chirone serves the embedded Chirone web app and collaboration API.
+
+Usage:
+  chirone
+  chirone serve [flags]
+  chirone version
+
+Flags:
+  --addr string
+        address to listen on (default ":8090")
+  --data-dir string
+        directory where project snapshots are stored (default "./data")
+  --allow-origin string
+        CORS allowed origin (or * for all) (default "*")
+  --ui-dir string
+        optional directory to serve static UI files from instead of embedded assets
+`)
+}
+
+func main() {
+	if err := runCLI(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

@@ -5,7 +5,7 @@
 	import '$lib/app.css';
 	import { base } from '$app/paths';
 
-	import { collabServerSHA, collabStatus, initCollabSync } from '$lib/collab/client';
+	import { appVersion, collabServerSHA, collabStatus, initAppVersionInfo, initCollabSync } from '$lib/collab/client';
 	import NavLink from '$lib/ui/navLink.svelte';
 
 	const links = [
@@ -18,6 +18,7 @@
 	];
 
 	onMount(() => {
+		initAppVersionInfo();
 		const stop = initCollabSync();
 		return () => {
 			stop();
@@ -44,6 +45,7 @@
 					</span>
 					<div class="flex min-w-0 items-center gap-3 text-slate-400">
 						<span class="truncate font-semibold text-slate-200">{$collabStatus.project}</span>
+						<span>v{$appVersion}</span>
 						<span>SHA {$collabServerSHA}</span>
 					</div>
 				{:else}

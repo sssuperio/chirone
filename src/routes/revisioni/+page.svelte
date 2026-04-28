@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { collabStatus } from '$lib/collab/client';
+	import { collabConfig, collabStatus } from '$lib/collab/client';
 	import Button from '$lib/ui/button.svelte';
 
 	type RevisionMeta = {
@@ -16,10 +16,6 @@
 		suggestedMessage: string;
 		revisions: Array<RevisionMeta>;
 	};
-
-	const collabServer = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() ?? '';
-	const collabEnabled = collabServer.length > 0;
-	const collabServerBase = collabServer.replace(/\/+$/g, '');
 
 	let loading = false;
 	let saving = false;
@@ -79,10 +75,12 @@
 	}
 
 	function revisionsURL(projectID: string): string {
+		const collabServerBase = $collabConfig.base;
 		return `${collabServerBase}/api/revisions?project=${encodeURIComponent(projectID)}`;
 	}
 
 	function revisionRevertURL(projectID: string): string {
+		const collabServerBase = $collabConfig.base;
 		return `${collabServerBase}/api/revisions/revert?project=${encodeURIComponent(projectID)}`;
 	}
 
@@ -201,6 +199,7 @@
 	}
 
 	$: activeProject = sanitizeProjectID($collabStatus.project || 'default');
+	$: collabEnabled = $collabConfig.enabled;
 	$: collabState = $collabStatus.state;
 	$: if (
 		collabEnabled &&
@@ -225,7 +224,9 @@
 
 <div class="h-full overflow-y-auto p-8 space-y-6">
 	{#if !collabEnabled}
-		<p class="font-mono text-sm text-slate-600">Collab non configurato (`VITE_COLLAB_SERVER` mancante).</p>
+		<p class="font-mono text-sm text-slate-600">
+			Collab non configurato. Imposta il server collab in `Impostazioni`.
+		</p>
 	{:else}
 		<div class="space-y-2">
 			<h1 class="font-mono text-xl">Revisioni</h1>

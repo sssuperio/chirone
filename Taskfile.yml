@@ -1,4 +1,4 @@
-version: "3"
+version: '3'
 
 tasks:
   default:
@@ -26,18 +26,23 @@ tasks:
 
   collab:server:
     desc: Start the Go collaboration server (SSE + file persistence)
-    dir: ./collab-server
     cmds:
       - go run . --addr :8090 --data-dir ./data
 
   build:
-    desc: Build the app for production
+    desc: Build the embedded web app and Chirone binary
+    deps: [build:web]
+    cmds:
+      - go build -o ./chirone .
+
+  build:web:
+    desc: Build the web app for embedding
     cmds:
       - pnpm run build
 
   preview:
-    desc: Preview the production build
-    deps: [build]
+    desc: Preview the production web build
+    deps: [build:web]
     cmds:
       - pnpm run preview
 
@@ -79,9 +84,9 @@ tasks:
       - task: test
 
   docker:build:
-    desc: Build Docker image (UI + collab server)
+    desc: Build Docker image (embedded UI + Chirone server)
     cmds:
-      - docker build --build-arg PUBLIC_BASE_PATH=${BUILD_PUBLIC_BASE_PATH:-} --build-arg VITE_COLLAB_SERVER=${BUILD_VITE_COLLAB_SERVER:-/} --build-arg VITE_COLLAB_PROJECT=${BUILD_VITE_COLLAB_PROJECT:-default} -t ${IMAGE:-chirone}:${TAG:-latest} .
+      - docker build --build-arg PUBLIC_CHIRONE_BASE_PATH=${BUILD_CHIRONE_BASE_PATH:-} --build-arg PUBLIC_CHIRONE_SYNC_API_BASE=${BUILD_CHIRONE_SYNC_API_BASE:-/} --build-arg PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE=${BUILD_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE:-false} --build-arg PUBLIC_CHIRONE_SYNC_PROJECT=${BUILD_CHIRONE_SYNC_PROJECT:-default} -t ${IMAGE:-chirone}:${TAG:-latest} .
 
   docker:run:
     desc: Run Docker image on localhost:8080 with persistent data volume

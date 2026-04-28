@@ -9,7 +9,13 @@
 		fontMetadata,
 		defaultMetadata
 	} from '$lib/stores';
-	import { collabStatus, setCollabProject } from '$lib/collab/client';
+	import {
+		canOverrideCollabServer,
+		collabConfig,
+		collabStatus,
+		setCollabProject,
+		setCollabServer
+	} from '$lib/collab/client';
 	import { normalizeFontMetrics } from '$lib/GTL/metrics';
 	import { normalizeFontMetadata } from '$lib/GTL/metadata';
 	import Upload from '$lib/ui/upload.svelte';
@@ -82,8 +88,11 @@
 	let importTooltipOk = false;
 	let importTooltipFail = false;
 
-	// Collab project switch
+	// Sync backend / project switch
 	const projectNamePattern = /^[a-zA-Z0-9_-]+$/;
+	const collabServerPattern = /^(|\/|https?:\/\/.+)$/;
+	let collabServerInput = '';
+	let previousServerFromStatus = '';
 	let projectNameInput = '';
 	let previousProjectFromStatus = '';
 
@@ -94,13 +103,23 @@
 
 	$: requiredProjectName = $collabStatus.project || 'default';
 	$: {
+		const currentServer = $collabConfig.server;
+		if (!collabServerInput || collabServerInput === previousServerFromStatus) {
+			collabServerInput = currentServer;
+		}
+		previousServerFromStatus = currentServer;
+	}
+	$: {
 		const currentProject = $collabStatus.project || 'default';
 		if (!projectNameInput || projectNameInput === previousProjectFromStatus) {
 			projectNameInput = currentProject;
 		}
 		previousProjectFromStatus = currentProject;
 	}
+	$: sanitizedCollabServerInput = collabServerInput.trim();
 	$: sanitizedProjectNameInput = projectNameInput.trim();
+	$: isCollabServerValid = collabServerPattern.test(sanitizedCollabServerInput);
+	$: canApplyCollabServer = isCollabServerValid && sanitizedCollabServerInput !== $collabConfig.server;
 	$: isProjectNameValid = projectNamePattern.test(sanitizedProjectNameInput);
 	$: canApplyProjectName = isProjectNameValid && sanitizedProjectNameInput !== requiredProjectName;
 	$: canConfirmClear = clearProjectInput === requiredProjectName;
@@ -131,13 +150,41 @@
 		if (!canApplyProjectName) return;
 		projectNameInput = setCollabProject(sanitizedProjectNameInput);
 	}
+
+	function applyCollabServer() {
+		if (!canApplyCollabServer) return;
+		collabServerInput = setCollabServer(sanitizedCollabServerInput);
+	}
 </script>
 
 <!--  -->
 
 <div class="p-8 space-y-8 flex flex-col">
+	{#if canOverrideCollabServer}
+		<div class="space-y-2">
+			<p class="font-mono">Backend sync</p>
+			<p class="font-mono text-sm text-slate-600">
+				Usa `http://localhost:8090` in sviluppo separato, `/` quando UI e API sono servite dallo stesso binario,
+				oppure lascia vuoto per disattivare la sync.
+			</p>
+			<div class="flex gap-2 items-center">
+				<input
+					class="w-full max-w-md border border-slate-400 px-3 py-2"
+					placeholder="http://localhost:8090 oppure /"
+					bind:value={collabServerInput}
+				/>
+				<Button disabled={!canApplyCollabServer} on:click={applyCollabServer}>Applica server</Button>
+			</div>
+			{#if !isCollabServerValid}
+				<p class="font-mono text-xs text-rose-700">
+					Valore non valido. Usa URL `http://...`, `https://...`, `/`, oppure vuoto.
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	<div class="space-y-2">
-		<p class="font-mono">Nome progetto collab</p>
+		<p class="font-mono">Progetto sync</p>
 		<p class="font-mono text-sm text-slate-600">
 			Usa solo lettere, numeri, `_` e `-`. Cambiando progetto, la sync passa subito al nuovo namespace.
 		</p>
