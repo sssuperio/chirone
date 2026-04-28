@@ -6,32 +6,38 @@ Font design playground with a Svelte web UI embedded inside a single Go binary.
 
 ### Linux/macOS with curl | tar
 
+All commands install `chirone` to `~/.local/bin`.
+
 macOS Apple Silicon:
 
 ```bash
-curl -L https://github.com/sssuperio/chirone/releases/latest/download/chirone-Darwin-arm64.tar.gz | sudo tar -xzf - -C /usr/local/bin/
-sudo chmod +x /usr/local/bin/chirone
+mkdir -p ~/.local/bin
+curl -L --output - https://github.com/sssuperio/chirone/releases/latest/download/chirone-Darwin-arm64.tar.gz | tar -xzf - -C ~/.local/bin/
+chmod +x ~/.local/bin/chirone
 ```
 
 Linux x86_64:
 
 ```bash
-curl -L https://github.com/sssuperio/chirone/releases/latest/download/chirone-Linux-x86_64.tar.gz | sudo tar -xzf - -C /usr/local/bin/
-sudo chmod +x /usr/local/bin/chirone
+mkdir -p ~/.local/bin
+curl -L --output - https://github.com/sssuperio/chirone/releases/latest/download/chirone-Linux-x86_64.tar.gz | tar -xzf - -C ~/.local/bin/
+chmod +x ~/.local/bin/chirone
 ```
 
 macOS Intel:
 
 ```bash
-curl -L https://github.com/sssuperio/chirone/releases/latest/download/chirone-Darwin-x86_64.tar.gz | sudo tar -xzf - -C /usr/local/bin/
-sudo chmod +x /usr/local/bin/chirone
+mkdir -p ~/.local/bin
+curl -L --output - https://github.com/sssuperio/chirone/releases/latest/download/chirone-Darwin-x86_64.tar.gz | tar -xzf - -C ~/.local/bin/
+chmod +x ~/.local/bin/chirone
 ```
 
 Linux arm64:
 
 ```bash
-curl -L https://github.com/sssuperio/chirone/releases/latest/download/chirone-Linux-aarch64.tar.gz | sudo tar -xzf - -C /usr/local/bin/
-sudo chmod +x /usr/local/bin/chirone
+mkdir -p ~/.local/bin
+curl -L --output - https://github.com/sssuperio/chirone/releases/latest/download/chirone-Linux-aarch64.tar.gz | tar -xzf - -C ~/.local/bin/
+chmod +x ~/.local/bin/chirone
 ```
 
 ### With mise
