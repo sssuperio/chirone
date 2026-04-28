@@ -1,0 +1,135 @@
+name: 📢 Test & Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: 🕸️ Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend unit tests
+        run: pnpm exec vitest run
+
+      - name: Build embedded frontend
+        env:
+          PUBLIC_CHIRONE_BASE_PATH: ''
+          PUBLIC_CHIRONE_SYNC_API_BASE: /
+          PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE: 'false'
+          PUBLIC_CHIRONE_SYNC_PROJECT: default
+        run: pnpm run build
+
+  lint:
+    name: 🚨 Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+  vuln:
+    name: 🔒 Vulnerability check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-package: ./...
+
+  test:
+    name: ✅ Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run tests
+        run: go test ./...
+
+  release:
+    name: 🔖 Semantic release & publish binaries
+    needs: [web, lint, vuln, test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build embedded frontend
+        env:
+          PUBLIC_CHIRONE_BASE_PATH: ''
+          PUBLIC_CHIRONE_SYNC_API_BASE: /
+          PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE: 'false'
+          PUBLIC_CHIRONE_SYNC_PROJECT: default
+        run: pnpm run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: go-semantic-release/action@v1
+        with:
+          hooks: goreleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -13,7 +13,7 @@ function normalizeBasePath(value) {
 	return withoutTrailingSlash === '/' ? '' : withoutTrailingSlash;
 }
 
-const productionBasePath = normalizeBasePath(process.env.PUBLIC_BASE_PATH ?? '/GTL-web');
+const productionBasePath = normalizeBasePath(process.env.PUBLIC_CHIRONE_BASE_PATH ?? '');
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -22,9 +22,9 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
-		// /docs because of github pages
 		adapter: adapter({
-			pages: 'docs'
+			pages: 'web/dist',
+			assets: 'web/dist'
 		}),
 
 		paths: {
