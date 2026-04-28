@@ -1110,9 +1110,7 @@ func (h *hub) revertRevision(projectID, revisionID, clientID string) (projectRes
 			return projectResponse{}, err
 		}
 	}
-	if event != nil {
-		publishProjectEvent(channels, *event)
-	}
+	publishProjectEvent(channels, *event)
 
 	return response, nil
 }
@@ -2073,7 +2071,9 @@ func (s *server) handleProject(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	case http.MethodPut:
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 
 		var req updateProjectRequest
 		if err := decodeRequestBody(w, r, &req); err != nil {
@@ -2165,7 +2165,9 @@ func (s *server) handleRevisions(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	case http.MethodPost:
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 		var req createRevisionRequest
 		if err := decodeRequestBody(w, r, &req); err != nil {
 			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
@@ -2203,7 +2205,9 @@ func (s *server) handleRevisionRevert(w http.ResponseWriter, r *http.Request) {
 		projectID = "default"
 	}
 
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 	var req revertRevisionRequest
 	if err := decodeRequestBody(w, r, &req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
@@ -2558,7 +2562,7 @@ func (s *server) routes() http.Handler {
 				return
 			}
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = w.Write([]byte(fmt.Sprintf("chirone %s (%s)\n", s.appVersion, s.appSHA)))
+			_, _ = fmt.Fprintf(w, "chirone %s (%s)\n", s.appVersion, s.appSHA)
 		})
 	}
 
