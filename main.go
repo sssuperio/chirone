@@ -1057,7 +1057,6 @@ func (h *hub) revertRevision(projectID, revisionID, clientID string) (projectRes
 		response    projectResponse
 		persistCopy *projectState
 		channels    []chan projectEvent
-		event       *projectEvent
 	)
 
 	h.mu.Lock()
@@ -1098,11 +1097,6 @@ func (h *hub) revertRevision(projectID, revisionID, clientID string) (projectRes
 	response = projectResponseFromState(state)
 	persistCopy = cloneProjectStateForPersist(state)
 	channels = collectSubscriberChannels(state)
-	event = &projectEvent{
-		Type:            "snapshot",
-		ClientID:        clientID,
-		projectDocument: state.Doc,
-	}
 	h.mu.Unlock()
 
 	if persistCopy != nil {
@@ -1110,7 +1104,11 @@ func (h *hub) revertRevision(projectID, revisionID, clientID string) (projectRes
 			return projectResponse{}, err
 		}
 	}
-	publishProjectEvent(channels, *event)
+	publishProjectEvent(channels, projectEvent{
+		Type:            "snapshot",
+		ClientID:        clientID,
+		projectDocument: state.Doc,
+	})
 
 	return response, nil
 }
@@ -2242,7 +2240,9 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 		var req updateGlyphRequest
 		if err := decodeRequestBody(w, r, &req); err != nil {
 			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
@@ -2261,7 +2261,9 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	case http.MethodDelete:
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 		var req deleteGlyphRequest
 		if err := decodeRequestBody(w, r, &req); err != nil {
 			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
@@ -2298,7 +2300,9 @@ func (s *server) handleSyntax(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 		var req updateSyntaxRequest
 		if err := decodeRequestBody(w, r, &req); err != nil {
 			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
@@ -2317,7 +2321,9 @@ func (s *server) handleSyntax(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	case http.MethodDelete:
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 		var req deleteSyntaxRequest
 		if err := decodeRequestBody(w, r, &req); err != nil {
 			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
@@ -2356,7 +2362,9 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		projectID = "default"
 	}
 
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 	var req updateMetricsRequest
 	if err := decodeRequestBody(w, r, &req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
