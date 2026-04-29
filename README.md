@@ -150,17 +150,37 @@ go run . --addr :8090 --data-dir ./data
 PUBLIC_CHIRONE_SYNC_API_BASE=http://localhost:8090 PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE=true PUBLIC_CHIRONE_SYNC_PROJECT=default pnpm run dev
 ```
 
-2. Same-origin from the single binary or Docker image
+2. Standalone binary
 
-In release builds, Docker, and the embedded single binary, the web app and the API are served by the same `chirone` process. In that setup the frontend should use:
+When you run the embedded single binary without sync variables, the UI uses the public Chirone sync backend:
+
+```bash
+chirone
+```
+
+Default sync backend: `https://chirone.sssuper.io`
+
+The single binary also reads these variables at runtime and injects them into the embedded UI, so this exposes the backend field in settings:
+
+```bash
+PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE=true chirone
+```
+
+Use same-origin sync explicitly if you want the UI to talk to the API served by the same process:
+
+```bash
+PUBLIC_CHIRONE_SYNC_API_BASE=/ chirone
+```
+
+3. Docker same-origin
+
+Docker sets same-origin sync by default because the web app and API are served by the same container:
 
 ```bash
 PUBLIC_CHIRONE_SYNC_API_BASE=/
 PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE=false
 PUBLIC_CHIRONE_SYNC_PROJECT=default
 ```
-
-That is already what the Dockerfile and release workflow build with.
 
 ### Production recommendation
 
@@ -227,6 +247,9 @@ docker compose build
 Runtime variables (container process):
 
 - `PORT` controls the Chirone listen port inside the container (and published port in compose)
+- `PUBLIC_CHIRONE_SYNC_API_BASE` sets the default sync backend for the embedded UI
+- `PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE=true` lets users change the sync backend in settings
+- `PUBLIC_CHIRONE_SYNC_PROJECT` sets the default sync project
 
 Version endpoint:
 
