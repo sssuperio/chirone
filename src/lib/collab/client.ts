@@ -5,6 +5,12 @@ import type { FontMetrics } from '$lib/GTL/metrics';
 import { normalizeFontMetrics } from '$lib/GTL/metrics';
 import type { GlyphInput, Syntax } from '$lib/types';
 
+declare global {
+	interface Window {
+		__CHIRONE_PUBLIC_ENV__?: Record<string, string>;
+	}
+}
+
 type CollabState = 'disabled' | 'connecting' | 'connected' | 'offline' | 'error';
 
 type FontProjectSnapshot = {
@@ -73,12 +79,12 @@ type AppSHAResponse = {
 };
 
 const collabServerDefault = normalizeCollabServer(
-	(env.PUBLIC_CHIRONE_SYNC_API_BASE ?? '').trim()
+	(publicEnv('PUBLIC_CHIRONE_SYNC_API_BASE') ?? '').trim()
 );
 const collabServerOverrideAllowed =
-	(env.PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE ?? '').trim() === 'true';
+	(publicEnv('PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE') ?? '').trim() === 'true';
 const collabProjectDefault = sanitizeProjectID(
-	(env.PUBLIC_CHIRONE_SYNC_PROJECT ?? '').trim() || 'default'
+	(publicEnv('PUBLIC_CHIRONE_SYNC_PROJECT') ?? '').trim() || 'default'
 );
 const syncAPIBaseStorageKey = 'chirone-sync-api-base';
 const syncProjectStorageKey = 'chirone-sync-project';
@@ -139,6 +145,14 @@ function buildCollabConfig(server: string): CollabConfig {
 
 function currentCollabConfig(): CollabConfig {
 	return buildCollabConfig(activeCollabServer);
+}
+
+function publicEnv(name: string): string | undefined {
+	if (typeof window !== 'undefined') {
+		const runtimeValue = window.__CHIRONE_PUBLIC_ENV__?.[name];
+		if (typeof runtimeValue === 'string') return runtimeValue;
+	}
+	return env[name];
 }
 
 function isObjectRecord(input: unknown): input is Record<string, unknown> {

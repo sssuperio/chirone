@@ -24,6 +24,8 @@ import (
 
 var version = "dev"
 
+const defaultRuntimeSyncAPIBase = "https://chirone.sssuper.io"
+
 //go:embed all:web/dist
 var embeddedAssets embed.FS
 
@@ -2495,6 +2497,59 @@ func resolveUIFS(uiDir string) fs.FS {
 	}
 }
 
+func runtimePublicEnv() map[string]string {
+	values := map[string]string{
+		"PUBLIC_CHIRONE_SYNC_API_BASE": defaultRuntimeSyncAPIBase,
+	}
+	for _, key := range []string{
+		"PUBLIC_CHIRONE_SYNC_API_BASE",
+		"PUBLIC_CHIRONE_ALLOW_SYNC_API_BASE_OVERRIDE",
+		"PUBLIC_CHIRONE_SYNC_PROJECT",
+	} {
+		if value, ok := os.LookupEnv(key); ok {
+			values[key] = value
+		}
+	}
+	return values
+}
+
+func injectRuntimePublicEnv(indexHTML []byte) []byte {
+	envJSON, err := json.Marshal(runtimePublicEnv())
+	if err != nil {
+		return indexHTML
+	}
+
+	script := []byte("<script>window.__CHIRONE_PUBLIC_ENV__=" + string(envJSON) + ";</script>")
+	headClose := []byte("</head>")
+	if index := strings.Index(string(indexHTML), string(headClose)); index >= 0 {
+		output := make([]byte, 0, len(indexHTML)+len(script))
+		output = append(output, indexHTML[:index]...)
+		output = append(output, script...)
+		output = append(output, indexHTML[index:]...)
+		return output
+	}
+
+	output := make([]byte, 0, len(indexHTML)+len(script))
+	output = append(output, script...)
+	output = append(output, indexHTML...)
+	return output
+}
+
+func (s *server) serveHTML(w http.ResponseWriter, r *http.Request, path string) {
+	html, err := fs.ReadFile(s.uiFS, path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if r.Method == http.MethodHead {
+		return
+	}
+
+	_, _ = w.Write(injectRuntimePublicEnv(html))
+}
+
 func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -2515,6 +2570,10 @@ func (s *server) handleUI(w http.ResponseWriter, r *http.Request) {
 	serveIfExists := func(path string) bool {
 		if !fileExistsFS(s.uiFS, path) {
 			return false
+		}
+		if pathpkg.Ext(path) == ".html" {
+			s.serveHTML(w, r, path)
+			return true
 		}
 		http.ServeFileFS(w, r, s.uiFS, path)
 		return true
