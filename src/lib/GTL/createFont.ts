@@ -353,8 +353,10 @@ export async function generateFont(
 	hhea.descender = descenderUnits;
 	hhea.lineGap = 0;
 
-	delete (font.names as any).trademark;
-	delete (font.names as any).description;
+	for (const platform of Object.values(font.names) as Record<string, any>[]) {
+		delete platform.trademark;
+		delete platform.description;
+	}
 
 	// opentype.js 1.3.x can crash on generated fonts when a character is missing
 	// (charToGlyphIndex returns null, then GlyphSet.get calls _push()).
