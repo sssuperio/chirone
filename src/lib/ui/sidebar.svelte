@@ -1,7 +1,8 @@
 <div
+	id="sidebar-root"
 	class="w-60 flex flex-col flex-nowrap p-6 bg-slate-100 flex-shrink-0 overflow-hidden"
 >
-	<div class="space-y-4 pb-4">
+	<div id="sidebar-top" class="space-y-4 pb-4">
 		<slot name="topArea" />
 
 		{#if $$slots.topArea}
@@ -13,7 +14,7 @@
 		</p>
 	</div>
 
-	<div class="h-0 grow overflow-y-auto space-y-1">
+	<div id="sidebar-list" class="h-0 grow overflow-y-auto space-y-1">
 		<slot name="items" />
 	</div>
 </div>

@@ -948,12 +948,12 @@
 	on:resize={onFloatingToolbarResize}
 />
 
-<div class="flex flex-row flex-nowrap items-stretch overflow-hidden grow">
+<div id="glyphs-page-root" class="flex flex-row flex-nowrap items-stretch overflow-hidden grow">
 	{#if !isZenMode}
-		<div class="shrink-0 flex items-stretch">
+		<div id="glyphs-sidebar" class="shrink-0 flex items-stretch">
 			<Sidebar>
 				<svelte:fragment slot="topArea">
-					<div class="space-y-2">
+					<div id="glyphs-sidebar-top" class="space-y-2">
 						<div class="flex gap-2">
 							<Button
 								on:click={() => {
@@ -967,7 +967,7 @@
 							>
 						</div>
 
-						<div class="space-y-1 font-mono text-xs">
+						<div id="glyphs-sidebar-filter" class="space-y-1 font-mono text-xs">
 							<p class="text-slate-600">Filtro set</p>
 							<select class="w-full h-9 bg-slate-200 px-2" bind:value={selectedGlyphSetFilter}>
 								<option value="all">Tutti i set</option>
@@ -1032,7 +1032,7 @@
 	{/if}
 
 	<!-- Glyph area -->
-	<div class={`grow flex flex-col items-stretch ${isZenMode ? 'p-2 space-y-2' : 'p-8 space-y-8'}`}>
+	<div id="glyphs-main-area" class={`grow flex flex-col items-stretch ${isZenMode ? 'p-2 space-y-2' : 'p-8 space-y-8'}`}>
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
 				{@const designed = isGlyphDesigned(g)}
@@ -1052,7 +1052,7 @@
 					...glyphStructureLines.map((line) => line.length)
 				)}
 				{#if !isZenMode}
-					<div class="shrink-0 flex justify-between items-center gap-4">
+					<div id="glyphs-header" class="shrink-0 flex justify-between items-center gap-4">
 						<div class="min-w-0 flex items-center gap-3">
 							<div class="flex items-center gap-2 text-lg">
 								<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
@@ -1076,9 +1076,9 @@
 					bind:this={designWorkspaceElement}
 					class={`h-0 grow min-h-0 flex gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
 				>
-					<div class="min-h-0 min-w-0 flex-1 flex flex-col gap-2">
+					<div id="glyphs-editor-panel" class="min-h-0 min-w-0 flex-1 flex flex-col gap-2">
 						<div class="h-0 grow min-h-0 flex flex-col">
-							<div class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
+							<div id="glyphs-editor-tabs" class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
 								<button
 									type="button"
 									class={`px-3 py-2 text-sm font-mono ${
@@ -1109,7 +1109,7 @@
 									</button>
 								</div>
 				
-								<div
+								<div id="glyphs-components-panel"
 									class="mb-2 p-2 border border-slate-300 bg-slate-50 space-y-2 font-mono text-xs"
 								>
 									<p class="text-slate-900">
@@ -1117,7 +1117,7 @@
 									</p>
 				
 										{#if componentGlyphs.length}
-											<div class="flex flex-wrap items-end gap-2">
+											<div id="glyphs-components-add" class="flex flex-wrap items-end gap-2">
 												<div class="flex flex-col gap-1">
 													<label class="text-slate-500" for="component-name-select">Nome</label>
 												<select
@@ -1142,7 +1142,7 @@
 									{/if}
 				
 										{#if glyphComponents.length}
-											<div class="space-y-1">
+											<div id="glyphs-components-list" class="space-y-1">
 												{#each glyphComponents as component, index (`${component.name}:${index}`)}
 													{@const componentVariantNames = getComponentVariantNames(component.name)}
 													<div
@@ -1250,8 +1250,8 @@
 									{/if}
 								</div>
 			
-								<div class="h-0 grow min-h-0 flex flex-col gap-2">
-									<div
+								<div id="glyphs-editor-content" class="h-0 grow min-h-0 flex flex-col gap-2">
+									<div id="glyphs-painter-container"
 										class={activeGlyphEditorTab === 'visualDesign'
 											? 'h-0 grow min-h-0'
 											: 'shrink-0'}
@@ -1269,12 +1269,12 @@
 									</div>
 			
 											{#if activeGlyphEditorTab === 'glyphStructure'}
-												<div
+												<div id="glyphs-structure-editor"
 													class={`grow min-h-0 h-full flex flex-col gap-2 ${
 														glyphComponents.length ? 'xl:flex-row' : ''
 													}`}
 												>
-													<div class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
+													<div id="glyphs-structure-input" class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
 														<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
 															<span>rows: 1..{glyphStructureLineCount}</span>
 															<span>cols: 1..{glyphStructureColumnCount}</span>
@@ -1291,7 +1291,7 @@
 												</div>
 
 													{#if glyphComponents.length}
-														<div class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
+														<div id="glyphs-structure-component-view" class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
 															<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
 																<span>Component symbol map</span>
 																<span>read-only</span>
@@ -1311,7 +1311,7 @@
 							</div>
 						</div>
 			
-						<div
+						<div id="glyphs-preview-panel"
 							class={`min-h-0 min-w-0 flex flex-col bg-slate-50 ${
 								isZenMode
 									? 'flex-[0_0_42%] border-l border-slate-300 pl-2'
@@ -1335,7 +1335,7 @@
 	</div>
 </div>
 
-<div
+<div id="glyphs-floating-toolbar"
 	bind:this={floatingToolbarElement}
 	class={`fixed z-50 w-44 border border-slate-300 bg-white shadow-lg ${isFloatingToolbarDragging ? 'cursor-grabbing' : ''}`}
 	style={`left: ${floatingToolbarX}px; top: ${floatingToolbarY}px;`}
