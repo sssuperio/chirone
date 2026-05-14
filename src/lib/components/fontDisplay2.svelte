@@ -52,7 +52,7 @@
 </script>
 
 <div>
-	<div class="flex gap-4 items-end">
+	<div class="flex items-end gap-4">
 		<div>
 			<Label target={`${id}-size`}>Font size</Label>
 			<InputNumber name={`${id}-size`} bind:value={fontSize} />

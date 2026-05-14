@@ -37,7 +37,7 @@ Only add an entry if:
 If unsure:
 
 → DO NOT add  
-→ DO NOT assume  
+→ DO NOT assume
 
 ---
 

@@ -282,7 +282,9 @@ function rowsToBody(rows: Array<Array<string>>): string {
 	return serializedRows.join('\n');
 }
 
-function createComponentSourceRowsFromBody(rows: Array<Array<string>>): Array<Array<Array<string>>> {
+function createComponentSourceRowsFromBody(
+	rows: Array<Array<string>>
+): Array<Array<Array<string>>> {
 	return rows.map((row) => Array.from({ length: row.length }, () => [] as Array<string>));
 }
 
@@ -295,7 +297,10 @@ function createEmptyRows(height: number, width: number): Array<Array<string>> {
 	return Array.from({ length: height }, () => Array.from({ length: width }, () => ' '));
 }
 
-function createEmptyComponentSourceRows(height: number, width: number): Array<Array<Array<string>>> {
+function createEmptyComponentSourceRows(
+	height: number,
+	width: number
+): Array<Array<Array<string>>> {
 	if (height <= 0 || width <= 0) return [];
 	return Array.from({ length: height }, () =>
 		Array.from({ length: width }, () => [] as Array<string>)

@@ -55,7 +55,8 @@
 	function normalizeRevisionsResponse(value: unknown): RevisionsResponse | null {
 		if (!isObjectRecord(value)) return null;
 		if (typeof value.project !== 'string') return null;
-		if (typeof value.currentVersion !== 'number' || !Number.isFinite(value.currentVersion)) return null;
+		if (typeof value.currentVersion !== 'number' || !Number.isFinite(value.currentVersion))
+			return null;
 		if (typeof value.suggestedMessage !== 'string') return null;
 		if (!Array.isArray(value.revisions)) return null;
 
@@ -222,7 +223,7 @@
 	<title>Revisioni</title>
 </svelte:head>
 
-<div class="h-full overflow-y-auto p-8 space-y-6">
+<div class="h-full space-y-6 overflow-y-auto p-8">
 	{#if !collabEnabled}
 		<p class="font-mono text-sm text-slate-600">
 			Collab non configurato. Imposta il server collab in `Impostazioni`.
@@ -231,7 +232,8 @@
 		<div class="space-y-2">
 			<h1 class="font-mono text-xl">Revisioni</h1>
 			<p class="font-mono text-sm text-slate-600">
-				Progetto: <span class="font-semibold text-slate-900">{activeProject}</span> · Versione corrente:
+				Progetto: <span class="font-semibold text-slate-900">{activeProject}</span> · Versione
+				corrente:
 				<span class="font-semibold text-slate-900">{currentVersion}</span>
 			</p>
 			<div class="flex flex-wrap gap-2">
@@ -242,9 +244,11 @@
 		</div>
 
 		<div class="space-y-3 border border-slate-300 bg-white p-4">
-			<p class="font-mono text-sm text-slate-700">Messaggio revisione (prefill automatico dai cambiamenti)</p>
+			<p class="font-mono text-sm text-slate-700">
+				Messaggio revisione (prefill automatico dai cambiamenti)
+			</p>
 			<textarea
-				class="w-full min-h-28 border border-slate-300 p-3 font-mono text-sm"
+				class="min-h-28 w-full border border-slate-300 p-3 font-mono text-sm"
 				bind:value={messageDraft}
 				on:input={handleMessageInput}
 			/>
@@ -271,9 +275,9 @@
 			{:else}
 				<div class="space-y-3">
 					{#each revisions as revision (revision.id)}
-						<div class="border border-slate-300 bg-white p-4 space-y-2">
+						<div class="space-y-2 border border-slate-300 bg-white p-4">
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-								<p class="font-mono text-sm text-slate-900 font-semibold">{revision.message}</p>
+								<p class="font-mono text-sm font-semibold text-slate-900">{revision.message}</p>
 								<span class="font-mono text-xs text-slate-500">id: {revision.id}</span>
 							</div>
 							<p class="font-mono text-xs text-slate-600">

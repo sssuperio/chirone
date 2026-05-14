@@ -7,7 +7,7 @@ It is the canonical source of truth for agents, assistants, humans, automation, 
 If another instruction conflicts with this file:
 
 → STOP  
-→ surface the conflict  
+→ surface the conflict
 
 ---
 
@@ -18,7 +18,7 @@ All rules in this document are mandatory unless explicitly stated otherwise.
 If a rule is violated:
 
 → the task is considered incomplete  
-→ the agent MUST correct it before finishing  
+→ the agent MUST correct it before finishing
 
 Agents MUST NOT:
 
@@ -437,6 +437,7 @@ Every Go project using `Taskfile.yml` MUST declare both Go and Task:
 go = "1.26.2"
 task = "latest"
 ```
+
 Agents MUST NOT create Taskfile.yml without also declaring task in mise.toml.
 
 Then your `mise install` should actually install Task, and:

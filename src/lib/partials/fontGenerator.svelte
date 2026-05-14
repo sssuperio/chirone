@@ -17,7 +17,7 @@
 {:then font}
 	<slot {font} />
 {:catch error}
-	<p class="text-xs font-mono text-red-600">
+	<p class="font-mono text-xs text-red-600">
 		Errore generazione font: {error instanceof Error ? error.message : String(error)}
 	</p>
 {/await}

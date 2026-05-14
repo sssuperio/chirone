@@ -65,35 +65,41 @@
 	}
 </script>
 
-<div class={`${compact ? 'space-y-3' : 'space-y-8'} w-full max-w-full min-w-0 overflow-x-hidden`}>
+<div class={`${compact ? 'space-y-3' : 'space-y-8'} w-full min-w-0 max-w-full overflow-x-hidden`}>
 	{#if showTitle}
-		<p class="text-small font-mono text-slate-900 text-sm">{title}</p>
+		<p class="text-small font-mono text-sm text-slate-900">{title}</p>
 	{/if}
 
 	{#if !currentGlyph}
 		<p>No glyph selected</p>
 	{:else if !$syntaxes.length}
-		<p class="text-sm font-mono text-slate-500">Nessuna sintassi disponibile per l'anteprima.</p>
+		<p class="font-mono text-sm text-slate-500">Nessuna sintassi disponibile per l'anteprima.</p>
 	{:else}
-			{#each $syntaxes as syntax, i}
-				<FontGenerator {syntax} glyphs={previewGlyphs} let:font>
-					{#if font}
-						<div class={`${compact ? 'space-y-1' : 'space-y-2'} w-full max-w-full min-w-0 overflow-x-hidden`}>
-							<FontDisplayMetrics
-								{canvasWidth}
-								{canvasHeight}
-								{font}
-								glyphName={currentGlyph.name}
-								text={currentGlyphText}
-								showLegend={showLegend && i === 0}
-							/>
-						</div>
-					{/if}
-				</FontGenerator>
-			{/each}
+		{#each $syntaxes as syntax, i}
+			<FontGenerator {syntax} glyphs={previewGlyphs} let:font>
+				{#if font}
+					<div
+						class={`${compact ? 'space-y-1' : 'space-y-2'} w-full min-w-0 max-w-full overflow-x-hidden`}
+					>
+						<FontDisplayMetrics
+							{canvasWidth}
+							{canvasHeight}
+							{font}
+							glyphName={currentGlyph.name}
+							text={currentGlyphText}
+							showLegend={showLegend && i === 0}
+						/>
+					</div>
+				{/if}
+			</FontGenerator>
+		{/each}
 
 		{#if showStylisticSets}
-			<StylisticSetPreview glyph={currentGlyph} {canvasWidth} canvasHeight={Math.floor(canvasHeight / 2)} />
+			<StylisticSetPreview
+				glyph={currentGlyph}
+				{canvasWidth}
+				canvasHeight={Math.floor(canvasHeight / 2)}
+			/>
 		{/if}
 	{/if}
 </div>

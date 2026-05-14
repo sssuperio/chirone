@@ -55,7 +55,9 @@
 
 	function canRuleUseVoidShape(rule: Rule): boolean {
 		if (rule.shape.kind === ShapeKind.Void) return true;
-		return !syntax.rules.some((candidate) => candidate !== rule && candidate.shape.kind === ShapeKind.Void);
+		return !syntax.rules.some(
+			(candidate) => candidate !== rule && candidate.shape.kind === ShapeKind.Void
+		);
 	}
 
 	$: pendingDeleteRule = pendingDeleteSymbol
@@ -154,7 +156,9 @@
 <div class="flex flex-wrap items-start gap-6">
 	{#if syntax.rules.length}
 		{#each syntax.rules as rule (rule.symbol)}
-			<div class="w-full min-w-[20rem] basis-[24rem] flex-1 space-y-3 border border-slate-200 bg-white p-4">
+			<div
+				class="w-full min-w-[20rem] flex-1 basis-[24rem] space-y-3 border border-slate-200 bg-white p-4"
+			>
 				<SyntaxRule
 					bind:rule
 					canUseVoidShape={canRuleUseVoidShape(rule)}
@@ -195,7 +199,8 @@
 
 						{#if affectedGlyphNames.length && !replacementOptions.length}
 							<p class="text-rose-700">
-								Impossibile eliminare: i glifi usano questo simbolo e non c'è una regola alternativa.
+								Impossibile eliminare: i glifi usano questo simbolo e non c'è una regola
+								alternativa.
 							</p>
 						{/if}
 

@@ -34,7 +34,7 @@
 	type="text"
 	bind:value
 	bind:this={thisInput}
-	class="p-2 bg-slate-200 font-mono hover:bg-slate-300 focus:ring-4"
+	class="bg-slate-200 p-2 font-mono hover:bg-slate-300 focus:ring-4"
 	id={name}
 	{name}
 />

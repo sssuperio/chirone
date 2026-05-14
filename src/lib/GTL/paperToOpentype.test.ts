@@ -10,12 +10,7 @@ describe('normalizeAbsoluteDirectives', () => {
 			['Z']
 		]);
 
-		expect(normalized).toEqual([
-			['M', 0, 0],
-			['L', 100, 0],
-			['L', 100, 100],
-			['Z']
-		]);
+		expect(normalized).toEqual([['M', 0, 0], ['L', 100, 0], ['L', 100, 100], ['Z']]);
 	});
 
 	it('keeps intentionally diagonal line segments unchanged', () => {

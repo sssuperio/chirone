@@ -15,11 +15,7 @@
 	import AddGlyphModal from './AddGlyphModal.svelte';
 	import AddGlyphSetModal from './AddGlyphSetModal.svelte';
 	import { resolveUnicodeNumber } from '$lib/GTL/glyphName';
-	import {
-		getGlyphSetByID,
-		getGlyphSetDefinitions,
-		inferGlyphSetID
-	} from '$lib/GTL/glyphSets';
+	import { getGlyphSetByID, getGlyphSetDefinitions, inferGlyphSetID } from '$lib/GTL/glyphSets';
 	import {
 		isComponentGlyphName,
 		parseGlyphStructure,
@@ -103,11 +99,14 @@
 		transparentSymbols: [' '],
 		rulesBySymbol: getRulesBySymbol($syntaxes)
 	});
-	$: resolvedGlyphStructuresVisualDataForDisplay = resolveGlyphStructuresWithComponentMask($glyphs, {
-		transparentSymbols: [' ', '.'],
-		applySymbolOverride: false,
-		rulesBySymbol: getRulesBySymbol($syntaxes)
-	});
+	$: resolvedGlyphStructuresVisualDataForDisplay = resolveGlyphStructuresWithComponentMask(
+		$glyphs,
+		{
+			transparentSymbols: [' ', '.'],
+			applySymbolOverride: false,
+			rulesBySymbol: getRulesBySymbol($syntaxes)
+		}
+	);
 	$: resolvedGlyphStructuresVisual = new Map(
 		Array.from(resolvedGlyphStructuresVisualData.entries()).map(([name, resolved]) => [
 			name,
@@ -171,7 +170,11 @@
 		return char !== ' ' && char !== '.';
 	}
 
-	function getMiniGlyphPreviewSymbols(structure: string, maxRows = 8, maxCols = 8): Array<Array<string>> {
+	function getMiniGlyphPreviewSymbols(
+		structure: string,
+		maxRows = 8,
+		maxCols = 8
+	): Array<Array<string>> {
 		const rows = (structure || '').split(/\r?\n/);
 		const height = rows.length;
 		const width = Math.max(0, ...rows.map((row) => row.length));
@@ -215,7 +218,11 @@
 				const sourceColEndExclusive = Math.floor(((tc + 1) * cropWidth) / targetCols);
 
 				let picked = ' ';
-				for (let sr = sourceRowStart; sr < Math.max(sourceRowStart + 1, sourceRowEndExclusive); sr++) {
+				for (
+					let sr = sourceRowStart;
+					sr < Math.max(sourceRowStart + 1, sourceRowEndExclusive);
+					sr++
+				) {
 					const line = rows[minRow + sr] ?? '';
 					for (
 						let sc = sourceColStart;
@@ -301,8 +308,7 @@
 				const occupiedCell = occupiedRow[colIndex] ?? ' ';
 				return occupiedCell === ' ' ? fillSymbol : ' ';
 			}).join('');
-		})
-			.join('\n');
+		}).join('\n');
 
 		return replaceGlyphStructureBody(structure, nextBody);
 	}
@@ -331,7 +337,8 @@
 	}
 
 	function isGlyphDesigned(glyph: GlyphInput): boolean {
-		const resolved = resolvedGlyphStructuresVisualDataForDisplay.get(glyph.name)?.body ?? getGlyphBody(glyph);
+		const resolved =
+			resolvedGlyphStructuresVisualDataForDisplay.get(glyph.name)?.body ?? getGlyphBody(glyph);
 		return structureHasDesignMarks(resolved);
 	}
 
@@ -380,9 +387,7 @@
 
 	function getAvailableComponentGlyphs(targetGlyphName: string): Array<GlyphInput> {
 		return sortGlyphs(
-			$glyphs.filter(
-				(glyph) => isComponentGlyphName(glyph.name) && glyph.name !== targetGlyphName
-			)
+			$glyphs.filter((glyph) => isComponentGlyphName(glyph.name) && glyph.name !== targetGlyphName)
 		);
 	}
 
@@ -754,7 +759,10 @@
 			nextStructure = replaceGlyphStructureComponents(nextStructure, rotatedComponents);
 		}
 		selectedGlyphData.structure = nextStructure;
-		glyphBodyRotationProgressByID.set(selectedGlyphData.id, previousRotationProgress + rotationStep);
+		glyphBodyRotationProgressByID.set(
+			selectedGlyphData.id,
+			previousRotationProgress + rotationStep
+		);
 		touchGlyphs();
 	}
 
@@ -845,84 +853,84 @@
 			syncDesignFullscreenState();
 		};
 
-			const onKeyDown = (event: KeyboardEvent) => {
-				if (isTypingTarget(event.target)) return;
-				if (event.repeat) return;
-				if (event.defaultPrevented) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (isTypingTarget(event.target)) return;
+			if (event.repeat) return;
+			if (event.defaultPrevented) return;
 
-				const key = event.key;
-				const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
-				const normalizedKey = key.toLowerCase();
+			const key = event.key;
+			const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+			const normalizedKey = key.toLowerCase();
 
-				const isVisualEditorKeyboardKey =
-					activeGlyphEditorTab === 'visualDesign' &&
-					!event.ctrlKey &&
-					!event.metaKey &&
-					!event.altKey &&
-					(key.length === 1 ||
-						key === 'Backspace' ||
-						key === 'Delete' ||
-						key === 'Enter' ||
-						key.startsWith('Arrow'));
-				if (isVisualEditorKeyboardKey) {
-					return;
-				}
-				if (plain && normalizedKey === 'r') {
-					event.preventDefault();
-					rotateSelectedGlyphClockwise();
-					return;
-				}
+			const isVisualEditorKeyboardKey =
+				activeGlyphEditorTab === 'visualDesign' &&
+				!event.ctrlKey &&
+				!event.metaKey &&
+				!event.altKey &&
+				(key.length === 1 ||
+					key === 'Backspace' ||
+					key === 'Delete' ||
+					key === 'Enter' ||
+					key.startsWith('Arrow'));
+			if (isVisualEditorKeyboardKey) {
+				return;
+			}
+			if (plain && normalizedKey === 'r') {
+				event.preventDefault();
+				rotateSelectedGlyphClockwise();
+				return;
+			}
 
-				const symbolShortcutAllowed = !event.ctrlKey && !event.metaKey && !event.altKey;
-				const shortcutBrushSymbol = symbolShortcutAllowed
-					? resolveBrushShortcutSymbol(key, brushSymbols)
-					: undefined;
-				if (shortcutBrushSymbol) {
-					event.preventDefault();
-					selectedBrushSymbol = shortcutBrushSymbol;
-					return;
-				}
+			const symbolShortcutAllowed = !event.ctrlKey && !event.metaKey && !event.altKey;
+			const shortcutBrushSymbol = symbolShortcutAllowed
+				? resolveBrushShortcutSymbol(key, brushSymbols)
+				: undefined;
+			if (shortcutBrushSymbol) {
+				event.preventDefault();
+				selectedBrushSymbol = shortcutBrushSymbol;
+				return;
+			}
 
-				if (plain && normalizedKey === 'z') {
-					event.preventDefault();
-					toggleZenMode();
-					return;
-				}
+			if (plain && normalizedKey === 'z') {
+				event.preventDefault();
+				toggleZenMode();
+				return;
+			}
 
-				if (plain && normalizedKey === 'f') {
-					event.preventDefault();
-					void toggleDesignFullscreen();
-					return;
-				}
+			if (plain && normalizedKey === 'f') {
+				event.preventDefault();
+				void toggleDesignFullscreen();
+				return;
+			}
 
-				if (plain && normalizedKey === 'v') {
-					event.preventDefault();
-					fillVoidSelectedGlyph();
-					return;
-				}
+			if (plain && normalizedKey === 'v') {
+				event.preventDefault();
+				fillVoidSelectedGlyph();
+				return;
+			}
 
-				if (plain && normalizedKey === 'm') {
-					event.preventDefault();
-					mirrorSelectedGlyphLeftRight();
-					return;
-				}
+			if (plain && normalizedKey === 'm') {
+				event.preventDefault();
+				mirrorSelectedGlyphLeftRight();
+				return;
+			}
 
-				if (plain && normalizedKey === 'x') {
-					event.preventDefault();
-					flipSelectedGlyphTopBottom();
-					return;
-				}
+			if (plain && normalizedKey === 'x') {
+				event.preventDefault();
+				flipSelectedGlyphTopBottom();
+				return;
+			}
 
-				if (plain && normalizedKey === 'c') {
-					event.preventDefault();
-					clearSelectedGlyphDesign();
-					return;
-				}
+			if (plain && normalizedKey === 'c') {
+				event.preventDefault();
+				clearSelectedGlyphDesign();
+				return;
+			}
 
-				if (normalizedKey === 'escape' && isZenMode) {
-					event.preventDefault();
-					setZenMode(false);
-				}
+			if (normalizedKey === 'escape' && isZenMode) {
+				event.preventDefault();
+				setZenMode(false);
+			}
 		};
 
 		document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -948,9 +956,9 @@
 	on:resize={onFloatingToolbarResize}
 />
 
-<div id="glyphs-page-root" class="flex flex-row flex-nowrap items-stretch overflow-hidden grow">
+<div id="glyphs-page-root" class="flex grow flex-row flex-nowrap items-stretch overflow-hidden">
 	{#if !isZenMode}
-		<div id="glyphs-sidebar" class="shrink-0 flex items-stretch">
+		<div id="glyphs-sidebar" class="flex shrink-0 items-stretch">
 			<Sidebar>
 				<svelte:fragment slot="topArea">
 					<div id="glyphs-sidebar-top" class="space-y-2">
@@ -969,7 +977,7 @@
 
 						<div id="glyphs-sidebar-filter" class="space-y-1 font-mono text-xs">
 							<p class="text-slate-600">Filtro set</p>
-							<select class="w-full h-9 bg-slate-200 px-2" bind:value={selectedGlyphSetFilter}>
+							<select class="h-9 w-full bg-slate-200 px-2" bind:value={selectedGlyphSetFilter}>
 								<option value="all">Tutti i set</option>
 								{#each glyphSetDefinitions as definition (definition.id)}
 									<option value={definition.id}>{definition.label}</option>
@@ -986,7 +994,7 @@
 				<svelte:fragment slot="listTitle">Lista glifi</svelte:fragment>
 				<svelte:fragment slot="items">
 					{#if filteredGlyphs.length === 0}
-						<p class="font-mono text-xs text-slate-500 px-2 py-1">
+						<p class="px-2 py-1 font-mono text-xs text-slate-500">
 							Nessun glifo nel filtro corrente.
 						</p>
 					{/if}
@@ -995,7 +1003,7 @@
 						{@const designed = isGlyphDesigned(g)}
 						<SidebarTile selection={selectedGlyph} id={g.id}>
 							<div class="flex items-start justify-between gap-2">
-								<div class="min-w-0 flex items-start gap-2">
+								<div class="flex min-w-0 items-start gap-2">
 									<div class="h-8 w-8 shrink-0 border border-slate-400 bg-white p-[1px]">
 										<div
 											class="grid h-full w-full gap-[1px] bg-slate-300"
@@ -1032,7 +1040,10 @@
 	{/if}
 
 	<!-- Glyph area -->
-	<div id="glyphs-main-area" class={`grow flex flex-col items-stretch ${isZenMode ? 'p-2 space-y-2' : 'p-8 space-y-8'}`}>
+	<div
+		id="glyphs-main-area"
+		class={`flex grow flex-col items-stretch ${isZenMode ? 'space-y-2 p-2' : 'space-y-8 p-8'}`}
+	>
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
 				{@const designed = isGlyphDesigned(g)}
@@ -1043,17 +1054,20 @@
 				{@const glyphComponents = getGlyphComponents(g)}
 				{@const resolvedGlyphBody = getResolvedGlyphBody(g)}
 				{@const resolvedGlyphComponentSources = getResolvedGlyphComponentSources(g)}
-					{@const glyphStructureValue = getGlyphStructureTextareaValue(g)}
-					{@const glyphStructureComponentSymbolViewValue = getGlyphStructureComponentSymbolViewValue(g)}
-					{@const glyphStructureLines = glyphStructureValue ? glyphStructureValue.split(/\r?\n/) : ['']}
+				{@const glyphStructureValue = getGlyphStructureTextareaValue(g)}
+				{@const glyphStructureComponentSymbolViewValue =
+					getGlyphStructureComponentSymbolViewValue(g)}
+				{@const glyphStructureLines = glyphStructureValue
+					? glyphStructureValue.split(/\r?\n/)
+					: ['']}
 				{@const glyphStructureLineCount = Math.max(1, glyphStructureLines.length)}
 				{@const glyphStructureColumnCount = Math.max(
 					1,
 					...glyphStructureLines.map((line) => line.length)
 				)}
 				{#if !isZenMode}
-					<div id="glyphs-header" class="shrink-0 flex justify-between items-center gap-4">
-						<div class="min-w-0 flex items-center gap-3">
+					<div id="glyphs-header" class="flex shrink-0 items-center justify-between gap-4">
+						<div class="flex min-w-0 items-center gap-3">
 							<div class="flex items-center gap-2 text-lg">
 								<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
 									{designed ? '●' : '○'}
@@ -1074,14 +1088,17 @@
 				{/if}
 				<div
 					bind:this={designWorkspaceElement}
-					class={`h-0 grow min-h-0 flex gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
+					class={`flex h-0 min-h-0 grow gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
 				>
-					<div id="glyphs-editor-panel" class="min-h-0 min-w-0 flex-1 flex flex-col gap-2">
-						<div class="h-0 grow min-h-0 flex flex-col">
-							<div id="glyphs-editor-tabs" class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2">
+					<div id="glyphs-editor-panel" class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+						<div class="flex h-0 min-h-0 grow flex-col">
+							<div
+								id="glyphs-editor-tabs"
+								class="mb-2 flex items-center gap-2 border-b border-slate-300 pb-2"
+							>
 								<button
 									type="button"
-									class={`px-3 py-2 text-sm font-mono ${
+									class={`px-3 py-2 font-mono text-sm ${
 										activeGlyphEditorTab === 'visualDesign'
 											? 'bg-slate-800 text-white'
 											: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
@@ -1095,7 +1112,7 @@
 								</button>
 								<button
 									type="button"
-									class={`px-3 py-2 text-sm font-mono ${
+									class={`px-3 py-2 font-mono text-sm ${
 										activeGlyphEditorTab === 'glyphStructure'
 											? 'bg-slate-800 text-white'
 											: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
@@ -1104,259 +1121,260 @@
 									on:click={() => {
 										activeGlyphEditorTab = 'glyphStructure';
 									}}
-									>
-										Glyph structure
-									</button>
-								</div>
-				
-								<div id="glyphs-components-panel"
-									class="mb-2 p-2 border border-slate-300 bg-slate-50 space-y-2 font-mono text-xs"
 								>
-									<p class="text-slate-900">
-										Componenti ({glyphComponents.length})
-									</p>
-				
-										{#if componentGlyphs.length}
-											<div id="glyphs-components-add" class="flex flex-wrap items-end gap-2">
-												<div class="flex flex-col gap-1">
-													<label class="text-slate-500" for="component-name-select">Nome</label>
-												<select
-													id="component-name-select"
-													class="h-10 bg-slate-200 px-2"
-													bind:value={newComponentName}
-												>
-														{#each componentGlyphs as componentGlyph (componentGlyph.id)}
-															<option value={componentGlyph.name}>{componentGlyph.name}</option>
-														{/each}
-													</select>
-												</div>
-												<Button on:click={() => addComponentReference(g)}
-													>+ Aggiungi componente</Button
-												>
-											</div>
-									{:else}
-										<p class="text-slate-500">
-											Nessun glifo `.component` disponibile. Crea un glifo come
-											`etom.component`.
-										</p>
-									{/if}
-				
-										{#if glyphComponents.length}
-											<div id="glyphs-components-list" class="space-y-1">
-												{#each glyphComponents as component, index (`${component.name}:${index}`)}
-													{@const componentVariantNames = getComponentVariantNames(component.name)}
-													<div
-														class="flex flex-wrap items-center gap-2 border border-slate-200 bg-white px-2 py-1"
-													>
-														<p class="max-w-[260px] truncate text-[11px]">{component.name}</p>
-														<button
-															type="button"
-															class="h-6 px-2 bg-slate-200 text-[11px] text-slate-800 hover:bg-slate-300 disabled:opacity-40 disabled:hover:bg-slate-200"
-															disabled={componentVariantNames.length <= 1}
-															title={
-																componentVariantNames.length > 1
-																	? `Varianti: ${componentVariantNames.join(', ')}`
-																	: 'Nessuna variante ss disponibile'
-															}
-															on:click={() => cycleComponentReferenceVariant(g, index)}
-														>
-															ss {getCurrentComponentVariantLabel(component.name)} ↻
-														</button>
-														<div class="flex items-center gap-1">
-															<span class="text-[10px] text-slate-500">x</span>
-															<input
-																type="number"
-																step="1"
-																class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
-																value={normalizeComponentPositionInput(component.x)}
-																on:change={(event) =>
-																	updateComponentReference(g, index, (existing) => ({
-																		...existing,
-																		x: parseComponentPositionInput(
-																			inputValue(event),
-																			existing.x
-																		)
-																	}))}
-															/>
-														</div>
-														<div class="flex items-center gap-1">
-															<span class="text-[10px] text-slate-500">y</span>
-															<input
-																type="number"
-																step="1"
-																class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
-																value={normalizeComponentPositionInput(component.y)}
-																on:change={(event) =>
-																	updateComponentReference(g, index, (existing) => ({
-																		...existing,
-																		y: parseComponentPositionInput(
-																			inputValue(event),
-																			existing.y
-																		)
-																	}))}
-															/>
-														</div>
-														<button
-															type="button"
-															class={`h-6 px-2 text-[11px] ${
-																component.flipped
-																	? 'bg-slate-800 text-white'
-																	: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-															}`}
-															on:click={() =>
-																updateComponentReference(g, index, (existing) => ({
-																	...existing,
-																	flipped: !existing.flipped
-																}))}
-														>
-															flipped
-														</button>
-														<button
-															type="button"
-															class={`h-6 px-2 text-[11px] ${
-																component.mirrored
-																	? 'bg-slate-800 text-white'
-																	: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-															}`}
-															on:click={() =>
-																updateComponentReference(g, index, (existing) => ({
-																	...existing,
-																	mirrored: !existing.mirrored
-																}))}
-														>
-															mirrored
-														</button>
-														<button
-															type="button"
-															class="h-6 px-2 bg-slate-200 text-[11px] text-slate-800 hover:bg-slate-300"
-															on:click={() =>
-																updateComponentReference(g, index, (existing) => ({
-																	...existing,
-																	rotation: normalizeComponentRotationInput(existing.rotation + 15)
-																}))}
-														>
-															rotate +15°
-														</button>
-														<button
-															type="button"
-															class="h-6 px-2 text-[11px] text-red-600 hover:text-red-800"
-															on:click={() => removeComponentReference(g, index)}
-														>
-															rimuovi
-														</button>
-													</div>
+									Glyph structure
+								</button>
+							</div>
+
+							<div
+								id="glyphs-components-panel"
+								class="mb-2 space-y-2 border border-slate-300 bg-slate-50 p-2 font-mono text-xs"
+							>
+								<p class="text-slate-900">
+									Componenti ({glyphComponents.length})
+								</p>
+
+								{#if componentGlyphs.length}
+									<div id="glyphs-components-add" class="flex flex-wrap items-end gap-2">
+										<div class="flex flex-col gap-1">
+											<label class="text-slate-500" for="component-name-select">Nome</label>
+											<select
+												id="component-name-select"
+												class="h-10 bg-slate-200 px-2"
+												bind:value={newComponentName}
+											>
+												{#each componentGlyphs as componentGlyph (componentGlyph.id)}
+													<option value={componentGlyph.name}>{componentGlyph.name}</option>
 												{/each}
-											</div>
-									{/if}
-								</div>
-			
-								<div id="glyphs-editor-content" class="h-0 grow min-h-0 flex flex-col gap-2">
-									<div id="glyphs-painter-container"
-										class={activeGlyphEditorTab === 'visualDesign'
-											? 'h-0 grow min-h-0'
-											: 'shrink-0'}
-									>
-												<GlyphPainter
-													bind:structure={g.structure}
-													bind:selectedBrush={selectedBrushSymbol}
-													resolvedBody={resolvedGlyphBody}
-													resolvedComponentSources={resolvedGlyphComponentSources}
-													brushes={brushSymbols}
-											{rulesBySymbol}
-											showGrid={activeGlyphEditorTab === 'visualDesign'}
-											on:change={scheduleTouchGlyphs}
-										/>
+											</select>
+										</div>
+										<Button on:click={() => addComponentReference(g)}>+ Aggiungi componente</Button>
 									</div>
-			
-											{#if activeGlyphEditorTab === 'glyphStructure'}
-												<div id="glyphs-structure-editor"
-													class={`grow min-h-0 h-full flex flex-col gap-2 ${
-														glyphComponents.length ? 'xl:flex-row' : ''
-													}`}
+								{:else}
+									<p class="text-slate-500">
+										Nessun glifo `.component` disponibile. Crea un glifo come `etom.component`.
+									</p>
+								{/if}
+
+								{#if glyphComponents.length}
+									<div id="glyphs-components-list" class="space-y-1">
+										{#each glyphComponents as component, index (`${component.name}:${index}`)}
+											{@const componentVariantNames = getComponentVariantNames(component.name)}
+											<div
+												class="flex flex-wrap items-center gap-2 border border-slate-200 bg-white px-2 py-1"
+											>
+												<p class="max-w-[260px] truncate text-[11px]">{component.name}</p>
+												<button
+													type="button"
+													class="h-6 bg-slate-200 px-2 text-[11px] text-slate-800 hover:bg-slate-300 disabled:opacity-40 disabled:hover:bg-slate-200"
+													disabled={componentVariantNames.length <= 1}
+													title={componentVariantNames.length > 1
+														? `Varianti: ${componentVariantNames.join(', ')}`
+														: 'Nessuna variante ss disponibile'}
+													on:click={() => cycleComponentReferenceVariant(g, index)}
 												>
-													<div id="glyphs-structure-input" class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
-														<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
-															<span>rows: 1..{glyphStructureLineCount}</span>
-															<span>cols: 1..{glyphStructureColumnCount}</span>
-														</div>
-														<textarea
-															class="grow min-h-0 h-full p-2 bg-slate-200 hover:bg-slate-300 font-mono text-xl focus:ring-4"
-															value={glyphStructureValue}
-															wrap="off"
-															spellcheck="false"
-															on:input={(event) => {
-																handleGlyphStructureInput(g, inputValue(event));
-														}}
+													ss {getCurrentComponentVariantLabel(component.name)} ↻
+												</button>
+												<div class="flex items-center gap-1">
+													<span class="text-[10px] text-slate-500">x</span>
+													<input
+														type="number"
+														step="1"
+														class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
+														value={normalizeComponentPositionInput(component.x)}
+														on:change={(event) =>
+															updateComponentReference(g, index, (existing) => ({
+																...existing,
+																x: parseComponentPositionInput(inputValue(event), existing.x)
+															}))}
 													/>
 												</div>
+												<div class="flex items-center gap-1">
+													<span class="text-[10px] text-slate-500">y</span>
+													<input
+														type="number"
+														step="1"
+														class="h-6 w-14 bg-slate-100 px-1 text-[11px]"
+														value={normalizeComponentPositionInput(component.y)}
+														on:change={(event) =>
+															updateComponentReference(g, index, (existing) => ({
+																...existing,
+																y: parseComponentPositionInput(inputValue(event), existing.y)
+															}))}
+													/>
+												</div>
+												<button
+													type="button"
+													class={`h-6 px-2 text-[11px] ${
+														component.flipped
+															? 'bg-slate-800 text-white'
+															: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+													}`}
+													on:click={() =>
+														updateComponentReference(g, index, (existing) => ({
+															...existing,
+															flipped: !existing.flipped
+														}))}
+												>
+													flipped
+												</button>
+												<button
+													type="button"
+													class={`h-6 px-2 text-[11px] ${
+														component.mirrored
+															? 'bg-slate-800 text-white'
+															: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+													}`}
+													on:click={() =>
+														updateComponentReference(g, index, (existing) => ({
+															...existing,
+															mirrored: !existing.mirrored
+														}))}
+												>
+													mirrored
+												</button>
+												<button
+													type="button"
+													class="h-6 bg-slate-200 px-2 text-[11px] text-slate-800 hover:bg-slate-300"
+													on:click={() =>
+														updateComponentReference(g, index, (existing) => ({
+															...existing,
+															rotation: normalizeComponentRotationInput(existing.rotation + 15)
+														}))}
+												>
+													rotate +15°
+												</button>
+												<button
+													type="button"
+													class="h-6 px-2 text-[11px] text-red-600 hover:text-red-800"
+													on:click={() => removeComponentReference(g, index)}
+												>
+													rimuovi
+												</button>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
 
-													{#if glyphComponents.length}
-														<div id="glyphs-structure-component-view" class="grow min-h-0 h-full flex flex-col gap-1 xl:flex-1 xl:basis-0">
-															<div class="shrink-0 flex items-center justify-between font-mono text-xs text-slate-500">
-																<span>Component symbol map</span>
-																<span>read-only</span>
-															</div>
-															<textarea
-																class="grow min-h-0 h-full p-2 bg-slate-100 font-mono text-xl text-slate-700"
-																value={glyphStructureComponentSymbolViewValue}
-																wrap="off"
-																spellcheck="false"
-																readonly
-															/>
-													</div>
-												{/if}
+							<div id="glyphs-editor-content" class="flex h-0 min-h-0 grow flex-col gap-2">
+								<div
+									id="glyphs-painter-container"
+									class={activeGlyphEditorTab === 'visualDesign' ? 'h-0 min-h-0 grow' : 'shrink-0'}
+								>
+									<GlyphPainter
+										bind:structure={g.structure}
+										bind:selectedBrush={selectedBrushSymbol}
+										resolvedBody={resolvedGlyphBody}
+										resolvedComponentSources={resolvedGlyphComponentSources}
+										brushes={brushSymbols}
+										{rulesBySymbol}
+										showGrid={activeGlyphEditorTab === 'visualDesign'}
+										on:change={scheduleTouchGlyphs}
+									/>
+								</div>
+
+								{#if activeGlyphEditorTab === 'glyphStructure'}
+									<div
+										id="glyphs-structure-editor"
+										class={`flex h-full min-h-0 grow flex-col gap-2 ${
+											glyphComponents.length ? 'xl:flex-row' : ''
+										}`}
+									>
+										<div
+											id="glyphs-structure-input"
+											class="flex h-full min-h-0 grow flex-col gap-1 xl:flex-1 xl:basis-0"
+										>
+											<div
+												class="flex shrink-0 items-center justify-between font-mono text-xs text-slate-500"
+											>
+												<span>rows: 1..{glyphStructureLineCount}</span>
+												<span>cols: 1..{glyphStructureColumnCount}</span>
+											</div>
+											<textarea
+												class="h-full min-h-0 grow bg-slate-200 p-2 font-mono text-xl hover:bg-slate-300 focus:ring-4"
+												value={glyphStructureValue}
+												wrap="off"
+												spellcheck="false"
+												on:input={(event) => {
+													handleGlyphStructureInput(g, inputValue(event));
+												}}
+											/>
+										</div>
+
+										{#if glyphComponents.length}
+											<div
+												id="glyphs-structure-component-view"
+												class="flex h-full min-h-0 grow flex-col gap-1 xl:flex-1 xl:basis-0"
+											>
+												<div
+													class="flex shrink-0 items-center justify-between font-mono text-xs text-slate-500"
+												>
+													<span>Component symbol map</span>
+													<span>read-only</span>
+												</div>
+												<textarea
+													class="h-full min-h-0 grow bg-slate-100 p-2 font-mono text-xl text-slate-700"
+													value={glyphStructureComponentSymbolViewValue}
+													wrap="off"
+													spellcheck="false"
+													readonly
+												/>
 											</div>
 										{/if}
-								</div>
-							</div>
-						</div>
-			
-						<div id="glyphs-preview-panel"
-							class={`min-h-0 min-w-0 flex flex-col bg-slate-50 ${
-								isZenMode
-									? 'flex-[0_0_42%] border-l border-slate-300 pl-2'
-									: 'flex-1 lg:border-l lg:border-slate-300 lg:pl-4'
-							}`}
-						>
-							<p class="text-small font-mono text-slate-900 mb-2 text-sm">
-								Anteprima e metriche
-							</p>
-							<div class="h-0 grow min-h-0 overflow-y-auto overflow-x-hidden">
-								<GlyphPreview
-									canvasHeight={previewCanvasHeight}
-									showTitle={false}
-									showLegend={false}
-								/>
+									</div>
+								{/if}
 							</div>
 						</div>
 					</div>
-				{/if}
-			{/each}
+
+					<div
+						id="glyphs-preview-panel"
+						class={`flex min-h-0 min-w-0 flex-col bg-slate-50 ${
+							isZenMode
+								? 'flex-[0_0_42%] border-l border-slate-300 pl-2'
+								: 'flex-1 lg:border-l lg:border-slate-300 lg:pl-4'
+						}`}
+					>
+						<p class="text-small mb-2 font-mono text-sm text-slate-900">Anteprima e metriche</p>
+						<div class="h-0 min-h-0 grow overflow-y-auto overflow-x-hidden">
+							<GlyphPreview
+								canvasHeight={previewCanvasHeight}
+								showTitle={false}
+								showLegend={false}
+							/>
+						</div>
+					</div>
+				</div>
+			{/if}
+		{/each}
 	</div>
 </div>
 
-<div id="glyphs-floating-toolbar"
+<div
+	id="glyphs-floating-toolbar"
 	bind:this={floatingToolbarElement}
 	class={`fixed z-50 w-44 border border-slate-300 bg-white shadow-lg ${isFloatingToolbarDragging ? 'cursor-grabbing' : ''}`}
 	style={`left: ${floatingToolbarX}px; top: ${floatingToolbarY}px;`}
 >
 	<button
 		type="button"
-		class="h-8 px-2 border-b border-slate-300 bg-slate-900 text-white font-mono text-xs flex items-center justify-between cursor-grab select-none"
+		class="flex h-8 cursor-grab select-none items-center justify-between border-b border-slate-300 bg-slate-900 px-2 font-mono text-xs text-white"
 		title="Trascina toolbar"
 		on:pointerdown={startFloatingToolbarDrag}
 	>
 		<span>Tools</span>
 		<span>::</span>
 	</button>
-	<div class="p-2 flex flex-col gap-1 bg-white">
+	<div class="flex flex-col gap-1 bg-white p-2">
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100"
 			title="Zen mode (Z)"
 			on:click={toggleZenMode}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>Z</span
 			>
 			<span>Zen mode</span>
@@ -1364,11 +1382,12 @@
 		</button>
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100"
 			title="Full screen (F)"
 			on:click={toggleDesignFullscreen}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>F</span
 			>
 			<span>{isDesignFullscreen ? 'Exit full screen' : 'Full screen'}</span>
@@ -1376,12 +1395,13 @@
 		</button>
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white"
 			title="Mirror L/R (M)"
 			on:click={mirrorSelectedGlyphLeftRight}
 			disabled={!selectedGlyphData}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>M</span
 			>
 			<span>Mirror L/R</span>
@@ -1389,12 +1409,13 @@
 		</button>
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white"
 			title="Flip U/D (X)"
 			on:click={flipSelectedGlyphTopBottom}
 			disabled={!selectedGlyphData}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>X</span
 			>
 			<span>Flip U/D</span>
@@ -1402,12 +1423,13 @@
 		</button>
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white"
 			title="Rotate 15° (R)"
 			on:click={rotateSelectedGlyphClockwise}
 			disabled={!selectedGlyphData}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>R</span
 			>
 			<span>Rotate 15°</span>
@@ -1415,12 +1437,13 @@
 		</button>
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white"
 			title="Fill void (V)"
 			on:click={fillVoidSelectedGlyph}
 			disabled={!selectedGlyphData}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>V</span
 			>
 			<span>Fill void</span>
@@ -1428,12 +1451,13 @@
 		</button>
 		<button
 			type="button"
-			class="w-full px-2 py-1 border border-slate-300 hover:bg-slate-100 font-mono text-xs flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-white"
+			class="flex w-full items-center gap-2 border border-slate-300 px-2 py-1 font-mono text-xs hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white"
 			title="Pulisci (C)"
 			on:click={clearSelectedGlyphDesign}
 			disabled={!selectedGlyphData}
 		>
-			<span class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
+			<span
+				class="inline-flex h-4 w-4 items-center justify-center border border-slate-400 text-[10px]"
 				>C</span
 			>
 			<span>Pulisci</span>

@@ -102,8 +102,7 @@ export async function generateGlyph(
 	// Adding glyph metadata
 	const name = glyph.name;
 	const advanceWidth = getGlyphWidth(renderStructure, baseSize * widthRatio);
-	const unicode =
-		unicodeOverride === undefined ? resolveUnicodeNumber(name) : unicodeOverride;
+	const unicode = unicodeOverride === undefined ? resolveUnicodeNumber(name) : unicodeOverride;
 
 	// Clearing paperjs
 	paper.project.clear();

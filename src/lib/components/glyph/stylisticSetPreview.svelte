@@ -1,7 +1,11 @@
 <script lang="ts">
 	import type { GlyphInput } from '$lib/types';
 	import { syntaxes, glyphs } from '$lib/stores';
-	import { parseGlyphStructure, replaceGlyphStructureComponents, type GlyphComponentRef } from '$lib/GTL/structure';
+	import {
+		parseGlyphStructure,
+		replaceGlyphStructureComponents,
+		type GlyphComponentRef
+	} from '$lib/GTL/structure';
 	import FontGenerator from '$lib/partials/fontGenerator.svelte';
 	import FontDisplayMetrics from '$lib/components/fontDisplayMetrics.svelte';
 
@@ -43,7 +47,7 @@
 
 	function generateCombinations<T>(options: Array<Array<T>>): Array<Array<T>> {
 		if (options.length === 0) return [[]];
-		if (options.length === 1) return options[0].map(item => [item]);
+		if (options.length === 1) return options[0].map((item) => [item]);
 
 		const result: Array<Array<T>> = [];
 		const rest = generateCombinations(options.slice(1));
@@ -57,7 +61,7 @@
 
 	function swapComponentVariant(glyph: GlyphInput, symbol: string, newVariant: string): GlyphInput {
 		const parsed = parseGlyphStructure(glyph.structure);
-		const newComponents = parsed.components.map(c =>
+		const newComponents = parsed.components.map((c) =>
 			c.symbol === symbol ? { ...c, name: newVariant } : c
 		);
 		return {
@@ -72,13 +76,13 @@
 	}
 
 	$: components = getGlyphComponents(glyph);
-	$: componentVariantOptions = components.map(c => getComponentVariants(c.name));
+	$: componentVariantOptions = components.map((c) => getComponentVariants(c.name));
 	$: allCombinations = generateCombinations(componentVariantOptions);
 </script>
 
 {#if allCombinations.length > 1}
 	<div class="mt-4 space-y-2">
-		<p class="text-small font-mono text-slate-900 text-sm">
+		<p class="text-small font-mono text-sm text-slate-900">
 			Stylistic Sets ({allCombinations.length} combinations)
 		</p>
 		<div class="flex flex-wrap gap-2">
@@ -87,9 +91,9 @@
 					(g, variant, i) => swapComponentVariant(g, components[i].symbol, variant),
 					glyph
 				)}
-				{@const comboLabel = combination.map(v => getVariantLabel(v)).join(' + ')}
-				<div class="border border-slate-300 p-2 bg-white">
-					<p class="text-xs font-mono text-slate-500 mb-1">{comboLabel}</p>
+				{@const comboLabel = combination.map((v) => getVariantLabel(v)).join(' + ')}
+				<div class="border border-slate-300 bg-white p-2">
+					<p class="mb-1 font-mono text-xs text-slate-500">{comboLabel}</p>
 					{#each $syntaxes as syntax}
 						<FontGenerator {syntax} glyphs={[previewGlyph]} let:font>
 							{#if font}

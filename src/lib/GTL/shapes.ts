@@ -29,8 +29,7 @@ function normalizeScale(value: number): number {
 function normalizeRotation(value: number): number {
 	if (!Number.isFinite(value)) return 0;
 
-	const snappedCardinal =
-		Math.round(value / CARDINAL_ROTATION_STEP) * CARDINAL_ROTATION_STEP;
+	const snappedCardinal = Math.round(value / CARDINAL_ROTATION_STEP) * CARDINAL_ROTATION_STEP;
 	if (Math.abs(value - snappedCardinal) <= CARDINAL_ROTATION_EPSILON) {
 		return normalizeSignedZero(snappedCardinal);
 	}

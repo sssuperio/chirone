@@ -69,7 +69,7 @@
 
 <div class={`h-full w-full rounded border border-slate-200 bg-white ${className}`}>
 	{#if fontError}
-		<p class="p-4 text-xs font-mono text-red-600">Errore preview font: {fontError}</p>
+		<p class="p-4 font-mono text-xs text-red-600">Errore preview font: {fontError}</p>
 	{:else}
 		<div
 			class="h-full w-full overflow-auto p-8"

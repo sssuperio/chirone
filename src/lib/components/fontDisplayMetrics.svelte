@@ -160,7 +160,7 @@
 			if (!ctx) return;
 			const char = text?.[0] || ' ';
 			const glyph = glyphName
-				? findGlyphByName(font, glyphName) ?? font.charToGlyph(char)
+				? (findGlyphByName(font, glyphName) ?? font.charToGlyph(char))
 				: font.charToGlyph(char);
 			const m = buildPreviewMetrics(glyph);
 			previewMetrics = m;
@@ -173,39 +173,44 @@
 			const padRight = 18;
 			const padTop = 18;
 			const padBottom = 40;
-				const previewHeight = Math.max(48, height - padTop - padBottom);
+			const previewHeight = Math.max(48, height - padTop - padBottom);
 
-				const normalizedMetrics = normalizeFontMetrics($metrics);
-				const bbox = glyph.getBoundingBox();
-				const ascenderUnits = finite(m.ascender, cellsToUnits(normalizedMetrics, normalizedMetrics.ascender));
-				const descenderUnits = finite(
-					m.descender,
-					-cellsToUnits(normalizedMetrics, normalizedMetrics.descender)
-				);
-				const capHeightUnits = finite(
-					m.capHeight,
-					cellsToUnits(normalizedMetrics, normalizedMetrics.capHeight)
-				);
-				const xHeightUnits = finite(
-					m.xHeight,
-					cellsToUnits(normalizedMetrics, normalizedMetrics.xHeight)
-				);
-				const bboxTopUnits = Number.isFinite(bbox.y2) ? bbox.y2 : ascenderUnits;
-				const bboxBottomUnits = Number.isFinite(bbox.y1) ? bbox.y1 : descenderUnits;
-				const topUnits = Math.max(ascenderUnits, bboxTopUnits);
-				const bottomUnits = Math.max(-descenderUnits, -bboxBottomUnits);
-				const verticalRangeUnits = Math.max(1, topUnits + bottomUnits);
-				const scale = previewHeight / verticalRangeUnits;
-				const fontSize = m.upm * scale;
-				const baselineY = padTop + topUnits * scale;
-				const ascenderY = baselineY - ascenderUnits * scale;
-				const descenderY = baselineY - descenderUnits * scale;
-				const capHeightY = baselineY - capHeightUnits * scale;
-				const xHeightY = baselineY - xHeightUnits * scale;
+			const normalizedMetrics = normalizeFontMetrics($metrics);
+			const bbox = glyph.getBoundingBox();
+			const ascenderUnits = finite(
+				m.ascender,
+				cellsToUnits(normalizedMetrics, normalizedMetrics.ascender)
+			);
+			const descenderUnits = finite(
+				m.descender,
+				-cellsToUnits(normalizedMetrics, normalizedMetrics.descender)
+			);
+			const capHeightUnits = finite(
+				m.capHeight,
+				cellsToUnits(normalizedMetrics, normalizedMetrics.capHeight)
+			);
+			const xHeightUnits = finite(
+				m.xHeight,
+				cellsToUnits(normalizedMetrics, normalizedMetrics.xHeight)
+			);
+			const bboxTopUnits = Number.isFinite(bbox.y2) ? bbox.y2 : ascenderUnits;
+			const bboxBottomUnits = Number.isFinite(bbox.y1) ? bbox.y1 : descenderUnits;
+			const topUnits = Math.max(ascenderUnits, bboxTopUnits);
+			const bottomUnits = Math.max(-descenderUnits, -bboxBottomUnits);
+			const verticalRangeUnits = Math.max(1, topUnits + bottomUnits);
+			const scale = previewHeight / verticalRangeUnits;
+			const fontSize = m.upm * scale;
+			const baselineY = padTop + topUnits * scale;
+			const ascenderY = baselineY - ascenderUnits * scale;
+			const descenderY = baselineY - descenderUnits * scale;
+			const capHeightY = baselineY - capHeightUnits * scale;
+			const xHeightY = baselineY - xHeightUnits * scale;
 
-				const glyphWidthPx =
-					Math.max(0, (Number.isFinite(bbox.x2) ? bbox.x2 : 0) - (Number.isFinite(bbox.x1) ? bbox.x1 : 0)) *
-					scale;
+			const glyphWidthPx =
+				Math.max(
+					0,
+					(Number.isFinite(bbox.x2) ? bbox.x2 : 0) - (Number.isFinite(bbox.x1) ? bbox.x1 : 0)
+				) * scale;
 			const previewWidth = width - padLeft - padRight;
 			const centeredLeft = padLeft + Math.max(0, (previewWidth - glyphWidthPx) / 2);
 			const originX = centeredLeft - (Number.isFinite(bbox.x1) ? bbox.x1 : 0) * scale;
@@ -224,7 +229,14 @@
 			drawLine(ctx, descenderY, colors.descender, 'Descender', padLeft, width - padRight);
 			drawVerticalLine(ctx, originX, colors.origin, 'Origin', verticalFromY, verticalToY);
 			drawVerticalLine(ctx, leftBoundX, colors.leftBound, 'Left bound', verticalFromY, verticalToY);
-			drawVerticalLine(ctx, rightBoundX, colors.rightBound, 'Right bound', verticalFromY, verticalToY);
+			drawVerticalLine(
+				ctx,
+				rightBoundX,
+				colors.rightBound,
+				'Right bound',
+				verticalFromY,
+				verticalToY
+			);
 			drawVerticalLine(ctx, advanceX, colors.advance, 'Advance width', verticalFromY, verticalToY);
 
 			ctx.save();
@@ -241,7 +253,9 @@
 		} catch (error) {
 			const width = Math.max(120, observedWidth);
 			const height = Math.max(160, canvasHeight);
-			const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | null;
+			const ctx = canvas.getContext('2d', {
+				willReadFrequently: true
+			}) as CanvasRenderingContext2D | null;
 			if (ctx) {
 				ctx.clearRect(0, 0, width, height);
 				ctx.fillStyle = '#f8fafc';
@@ -269,18 +283,23 @@
 
 	$: observedWidth = responsive ? Math.max(120, observedWidth) : canvasWidth;
 	$: {
-		const canRender = Boolean(canvas && font && text !== undefined && observedWidth > 0 && canvasHeight > 0);
+		const canRender = Boolean(
+			canvas && font && text !== undefined && observedWidth > 0 && canvasHeight > 0
+		);
 		if (canRender) {
 			render();
 		}
 	}
 </script>
 
-<div bind:this={container} class="space-y-3 w-full max-w-full min-w-0 overflow-x-hidden overflow-y-hidden">
-	<div class="relative w-full max-w-full min-w-0 overflow-hidden">
+<div
+	bind:this={container}
+	class="w-full min-w-0 max-w-full space-y-3 overflow-x-hidden overflow-y-hidden"
+>
+	<div class="relative w-full min-w-0 max-w-full overflow-hidden">
 		<canvas
 			bind:this={canvas}
-			class="block bg-slate-50 border border-slate-300 w-full max-w-full"
+			class="block w-full max-w-full border border-slate-300 bg-slate-50"
 			class:opacity-0={Boolean(previewSnapshotUrl)}
 			style={`height: ${canvasHeight}px; max-height: ${canvasHeight}px; max-width: 100%;`}
 			width={observedWidth}
@@ -288,7 +307,7 @@
 		/>
 		{#if previewSnapshotUrl}
 			<img
-				class="absolute inset-0 w-full border border-slate-300 bg-white pointer-events-none"
+				class="pointer-events-none absolute inset-0 w-full border border-slate-300 bg-white"
 				style={`height: ${canvasHeight}px; max-height: ${canvasHeight}px;`}
 				src={previewSnapshotUrl}
 				alt="Preview snapshot"
@@ -297,7 +316,9 @@
 	</div>
 
 	{#if previewMetrics}
-		<div class="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1 text-xs font-mono text-slate-700 w-full max-w-full min-w-0 overflow-x-hidden">
+		<div
+			class="grid w-full min-w-0 max-w-full grid-cols-2 gap-x-4 gap-y-1 overflow-x-hidden font-mono text-xs text-slate-700 lg:grid-cols-4"
+		>
 			<p>UPM: {previewMetrics.upm}</p>
 			<p>Ascender: {previewMetrics.ascender}</p>
 			<p>Descender: {previewMetrics.descender}</p>
@@ -310,20 +331,26 @@
 	{/if}
 
 	{#if renderError}
-		<p class="text-xs font-mono text-red-600">Errore preview: {renderError}</p>
+		<p class="font-mono text-xs text-red-600">Errore preview: {renderError}</p>
 	{/if}
 
 	{#if showLegend}
-		<div class="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs font-mono text-slate-600 w-full max-w-full min-w-0 overflow-x-hidden">
+		<div
+			class="grid w-full min-w-0 max-w-full grid-cols-1 gap-1 overflow-x-hidden font-mono text-xs text-slate-600 md:grid-cols-2"
+		>
 			<p><span style={`color: ${colors.baseline}`}>●</span> verde: baseline (linea di scrittura)</p>
 			<p><span style={`color: ${colors.xHeight}`}>●</span> blu: x-height (altezza minuscole)</p>
-			<p><span style={`color: ${colors.capHeight}`}>●</span> viola: cap height (altezza maiuscole)</p>
+			<p>
+				<span style={`color: ${colors.capHeight}`}>●</span> viola: cap height (altezza maiuscole)
+			</p>
 			<p><span style={`color: ${colors.ascender}`}>●</span> ambra: ascender (massima salita)</p>
 			<p><span style={`color: ${colors.descender}`}>●</span> rosso: descender (massima discesa)</p>
 			<p><span style={`color: ${colors.origin}`}>●</span> ciano: origine glyph (x=0)</p>
 			<p><span style={`color: ${colors.leftBound}`}>●</span> fucsia: bordo reale sx del disegno</p>
 			<p><span style={`color: ${colors.rightBound}`}>●</span> fucsia: bordo reale dx del disegno</p>
-			<p><span style={`color: ${colors.advance}`}>●</span> rosa: advance width (fine box metrica)</p>
+			<p>
+				<span style={`color: ${colors.advance}`}>●</span> rosa: advance width (fine box metrica)
+			</p>
 		</div>
 	{/if}
 </div>

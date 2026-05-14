@@ -119,7 +119,8 @@
 	$: sanitizedCollabServerInput = collabServerInput.trim();
 	$: sanitizedProjectNameInput = projectNameInput.trim();
 	$: isCollabServerValid = collabServerPattern.test(sanitizedCollabServerInput);
-	$: canApplyCollabServer = isCollabServerValid && sanitizedCollabServerInput !== $collabConfig.server;
+	$: canApplyCollabServer =
+		isCollabServerValid && sanitizedCollabServerInput !== $collabConfig.server;
 	$: isProjectNameValid = projectNamePattern.test(sanitizedProjectNameInput);
 	$: canApplyProjectName = isProjectNameValid && sanitizedProjectNameInput !== requiredProjectName;
 	$: canConfirmClear = clearProjectInput === requiredProjectName;
@@ -159,21 +160,22 @@
 
 <!--  -->
 
-<div class="p-8 space-y-8 flex flex-col">
+<div class="flex flex-col space-y-8 p-8">
 	{#if canOverrideCollabServer}
 		<div class="space-y-2">
 			<p class="font-mono">Backend sync</p>
 			<p class="font-mono text-sm text-slate-600">
-				Usa `http://localhost:8090` in sviluppo separato, `/` quando UI e API sono servite dallo stesso binario,
-				oppure lascia vuoto per disattivare la sync.
+				Usa `http://localhost:8090` in sviluppo separato, `/` quando UI e API sono servite dallo
+				stesso binario, oppure lascia vuoto per disattivare la sync.
 			</p>
-			<div class="flex gap-2 items-center">
+			<div class="flex items-center gap-2">
 				<input
 					class="w-full max-w-md border border-slate-400 px-3 py-2"
 					placeholder="http://localhost:8090 oppure /"
 					bind:value={collabServerInput}
 				/>
-				<Button disabled={!canApplyCollabServer} on:click={applyCollabServer}>Applica server</Button>
+				<Button disabled={!canApplyCollabServer} on:click={applyCollabServer}>Applica server</Button
+				>
 			</div>
 			{#if !isCollabServerValid}
 				<p class="font-mono text-xs text-rose-700">
@@ -186,9 +188,10 @@
 	<div class="space-y-2">
 		<p class="font-mono">Progetto sync</p>
 		<p class="font-mono text-sm text-slate-600">
-			Usa solo lettere, numeri, `_` e `-`. Cambiando progetto, la sync passa subito al nuovo namespace.
+			Usa solo lettere, numeri, `_` e `-`. Cambiando progetto, la sync passa subito al nuovo
+			namespace.
 		</p>
-		<div class="flex gap-2 items-center">
+		<div class="flex items-center gap-2">
 			<input
 				class="w-full max-w-md border border-slate-400 px-3 py-2"
 				placeholder="default"
@@ -197,7 +200,9 @@
 			<Button disabled={!canApplyProjectName} on:click={applyProjectName}>Applica progetto</Button>
 		</div>
 		{#if !isProjectNameValid}
-			<p class="font-mono text-xs text-rose-700">Nome non valido. Caratteri ammessi: `a-z A-Z 0-9 _ -`.</p>
+			<p class="font-mono text-xs text-rose-700">
+				Nome non valido. Caratteri ammessi: `a-z A-Z 0-9 _ -`.
+			</p>
 		{/if}
 	</div>
 
@@ -281,24 +286,24 @@
 					bind:value={$fontMetadata.manufacturerURL}
 				/>
 			</div>
-				<div class="space-y-1">
-					<label class="font-mono text-sm" for="fontMetaVendorID">Vendor ID</label>
-					<input
-						id="fontMetaVendorID"
-						class="w-full border border-slate-400 px-3 py-2 uppercase"
-						placeholder="SSSU"
-						maxlength="4"
-						disabled
-						readonly
-						bind:value={$fontMetadata.vendorID}
-					/>
-				</div>
+			<div class="space-y-1">
+				<label class="font-mono text-sm" for="fontMetaVendorID">Vendor ID</label>
+				<input
+					id="fontMetaVendorID"
+					class="w-full border border-slate-400 px-3 py-2 uppercase"
+					placeholder="SSSU"
+					maxlength="4"
+					disabled
+					readonly
+					bind:value={$fontMetadata.vendorID}
+				/>
+			</div>
 		</div>
 		<div class="space-y-1">
 			<label class="font-mono text-sm" for="fontMetaLicense">Licenza</label>
 			<textarea
 				id="fontMetaLicense"
-				class="w-full min-h-20 border border-slate-400 px-3 py-2"
+				class="min-h-20 w-full border border-slate-400 px-3 py-2"
 				placeholder="Testo licenza"
 				bind:value={$fontMetadata.license}
 			/>
@@ -307,11 +312,11 @@
 
 	<div>
 		<p class=" font-mono">Elimina progetto</p>
-		<p class="font-mono text-sm mb-2 text-slate-600">
+		<p class="mb-2 font-mono text-sm text-slate-600">
 			Il progetto verrà esportato automaticamente prima di essere eliminato
 		</p>
 		<button
-			class="flex bg-red-700 text-white p-3 hover:bg-red-800 font-mono disabled:opacity-40 disabled:hover:bg-red-700"
+			class="flex bg-red-700 p-3 font-mono text-white hover:bg-red-800 disabled:opacity-40 disabled:hover:bg-red-700"
 			on:click={openClearModal}
 		>
 			Clear
@@ -332,7 +337,7 @@
 			</p>
 		</Tooltip>
 		<Tooltip bind:visible={importTooltipFail} state="negative">
-			<div class="flex flex-row justify-between items-center">
+			<div class="flex flex-row items-center justify-between">
 				<p class="font-mono text-slate-900">Errore di caricamento :(</p>
 				<Button on:click={closeTooltipFail}>X</Button>
 			</div>
@@ -340,7 +345,12 @@
 	</div>
 </div>
 
-<Modal outsideclose class="!rounded-none-none !font-mono" bind:open={clearModalOpen} title="Conferma eliminazione">
+<Modal
+	outsideclose
+	class="!rounded-none-none !font-mono"
+	bind:open={clearModalOpen}
+	title="Conferma eliminazione"
+>
 	<div class="space-y-3 font-mono">
 		<p class="text-sm text-slate-800">
 			Questa operazione elimina tutto il progetto corrente. Per confermare scrivi il nome progetto:
@@ -357,7 +367,7 @@
 		<div class="flex gap-2">
 			<Button on:click={closeClearModal}>Annulla</Button>
 			<button
-				class="flex bg-red-700 text-white p-3 hover:bg-red-800 font-mono disabled:opacity-40 disabled:hover:bg-red-700"
+				class="flex bg-red-700 p-3 font-mono text-white hover:bg-red-800 disabled:opacity-40 disabled:hover:bg-red-700"
 				disabled={!canConfirmClear}
 				on:click={confirmClearProject}
 			>
