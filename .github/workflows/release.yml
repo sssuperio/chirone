@@ -75,9 +75,8 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - uses: golang/govulncheck-action@v1
-        with:
-          go-package: ./...
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   test:
     name: ✅ Test
