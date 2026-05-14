@@ -51,7 +51,11 @@ export function normalizeFontMetrics(input: SafeFontMetricsLike): FontMetrics {
 	const rawHeight = toFiniteNumber(input?.height, NaN);
 
 	let height = Number.isFinite(rawHeight) ? Math.round(rawHeight) : defaultHeight;
-	if (!Number.isFinite(rawHeight) && Number.isFinite(rawAscender) && Number.isFinite(rawDescender)) {
+	if (
+		!Number.isFinite(rawHeight) &&
+		Number.isFinite(rawAscender) &&
+		Number.isFinite(rawDescender)
+	) {
 		height = Math.max(1, Math.round(rawAscender + rawDescender));
 	}
 	height = Math.max(1, height);
@@ -63,7 +67,11 @@ export function normalizeFontMetrics(input: SafeFontMetricsLike): FontMetrics {
 	);
 	const vertical = estimateVerticalMetrics(height, descender);
 
-	const capHeight = toDiscrete(toFiniteNumber(input?.capHeight, vertical.capHeight), 1, vertical.ascender);
+	const capHeight = toDiscrete(
+		toFiniteNumber(input?.capHeight, vertical.capHeight),
+		1,
+		vertical.ascender
+	);
 	const xHeight = toDiscrete(
 		toFiniteNumber(input?.xHeight, Math.round(capHeight * 0.7)),
 		1,

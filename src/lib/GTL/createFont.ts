@@ -11,7 +11,7 @@ import {
 import { calcTransform, applyTransform } from './shapes';
 import { getAbsoluteSVGPath, arrayToDirectives, editPathFromDirectives } from './paperToOpentype';
 import paper from 'paper';
-import opentype from 'opentype.js';
+import * as opentype from 'opentype.js';
 import type { FontMetrics } from './metrics';
 import { cellsToUnits, normalizeFontMetrics, unitsPerCell } from './metrics';
 import type { FontMetadata } from './metadata';
@@ -102,8 +102,7 @@ export async function generateGlyph(
 	// Adding glyph metadata
 	const name = glyph.name;
 	const advanceWidth = getGlyphWidth(renderStructure, baseSize * widthRatio);
-	const unicode =
-		unicodeOverride === undefined ? resolveUnicodeNumber(name) : unicodeOverride;
+	const unicode = unicodeOverride === undefined ? resolveUnicodeNumber(name) : unicodeOverride;
 
 	// Clearing paperjs
 	paper.project.clear();
@@ -354,8 +353,10 @@ export async function generateFont(
 	hhea.descender = descenderUnits;
 	hhea.lineGap = 0;
 
-	delete (font.names as any).trademark;
-	delete (font.names as any).description;
+	for (const platform of Object.values(font.names) as Record<string, any>[]) {
+		delete platform.trademark;
+		delete platform.description;
+	}
 
 	// opentype.js 1.3.x can crash on generated fonts when a character is missing
 	// (charToGlyphIndex returns null, then GlyphSet.get calls _push()).

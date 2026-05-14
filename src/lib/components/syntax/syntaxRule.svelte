@@ -85,10 +85,12 @@
 
 <div class="flex flex-col flex-nowrap">
 	<!-- Symbol -->
-	<div class="text-xl p-4 bg-slate-800 text-white font-mono flex items-center justify-between gap-2">
+	<div
+		class="flex items-center justify-between gap-2 bg-slate-800 p-4 font-mono text-xl text-white"
+	>
 		<span>{rule.symbol}</span>
 		{#if rule.unused}
-			<span class="text-[10px] uppercase tracking-wide bg-amber-300 text-slate-900 px-2 py-1">
+			<span class="bg-amber-300 px-2 py-1 text-[10px] uppercase tracking-wide text-slate-900">
 				unused
 			</span>
 		{/if}

@@ -27,11 +27,9 @@
 {#if loading}
 	<p>Loading...</p>
 {:else if dataUrl}
-	<div
-		class="flex flex-row bg-slate-300 border-slate-300 border-2 w-fit items-center"
-	>
+	<div class="flex w-fit flex-row items-center border-2 border-slate-300 bg-slate-300">
 		<div class="bg-white">
-			<img class="w-20 h-20 object-cover" src={dataUrl} alt="up" />
+			<img class="h-20 w-20 object-cover" src={dataUrl} alt="up" />
 		</div>
 		<Button
 			on:click={() => {

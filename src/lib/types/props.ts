@@ -1,9 +1,4 @@
-import type {
-	NumberValue,
-	OrientationValue,
-	BooleanValue,
-	StringValue
-} from './values';
+import type { NumberValue, OrientationValue, BooleanValue, StringValue } from './values';
 
 /**
  * Prop types
@@ -25,10 +20,7 @@ export interface PropTemplate<K, V> {
 
 export type NumberProp = PropTemplate<PropKind.Number, NumberValue>;
 
-export type OrientationProp = PropTemplate<
-	PropKind.Orientation,
-	OrientationValue
->;
+export type OrientationProp = PropTemplate<PropKind.Orientation, OrientationValue>;
 
 export type BooleanProp = PropTemplate<PropKind.Boolean, BooleanValue>;
 

@@ -309,13 +309,15 @@ components:
 		const resolved = resolveGlyphStructures(
 			[component, normalPlacement, negativePlacement, positivePlacement],
 			{
-			transparentSymbols: [' ']
+				transparentSymbols: [' ']
 			}
 		);
 
 		expect(resolved.get('normal')).toBe('ab\ncd');
 		expect(resolved.get('negative')).toBe('d');
 		expect(resolved.get('positive')).toBe('');
-		expect((resolved.get('negative') ?? '').length).toBeLessThan((resolved.get('normal') ?? '').length);
+		expect((resolved.get('negative') ?? '').length).toBeLessThan(
+			(resolved.get('normal') ?? '').length
+		);
 	});
 });

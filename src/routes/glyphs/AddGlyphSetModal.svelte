@@ -46,7 +46,7 @@
 	<div class="space-y-3 font-mono">
 		<div class="space-y-1">
 			<p class="text-xs text-slate-600">Set</p>
-			<select class="w-full border hover:border-blue-600 px-4 py-2" bind:value={selectedSetID}>
+			<select class="w-full border px-4 py-2 hover:border-blue-600" bind:value={selectedSetID}>
 				{#each setDefinitions as definition (definition.id)}
 					<option value={definition.id}>{definition.label}</option>
 				{/each}
@@ -66,7 +66,7 @@
 
 		{#if missingNames.length}
 			<div class="max-h-40 overflow-y-auto border border-slate-200 bg-white p-2 text-xs">
-				<p class="text-slate-500 mb-1">Glifi mancanti</p>
+				<p class="mb-1 text-slate-500">Glifi mancanti</p>
 				<p class="break-words">{missingNames.join(', ')}</p>
 			</div>
 		{/if}

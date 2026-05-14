@@ -10,7 +10,7 @@ tasks:
   install:
     desc: Install dependencies
     cmds:
-      - pnpm install
+      - bun install
 
   dev:
     desc: Start collab server and Vite development server
@@ -22,7 +22,7 @@ tasks:
     desc: Start only the Vite development server
     deps: [install]
     cmds:
-      - pnpm run dev -- --open
+      - bun run dev -- --open
 
   collab:server:
     desc: Start the Go collaboration server (SSE + file persistence)
@@ -38,43 +38,43 @@ tasks:
   build:web:
     desc: Build the web app for embedding
     cmds:
-      - pnpm run build
+      - bun run build
 
   preview:
     desc: Preview the production web build
     deps: [build:web]
     cmds:
-      - pnpm run preview
+      - bun run preview
 
   check:
     desc: Run type and Svelte checks
     cmds:
-      - pnpm run check
+      - bun run check
 
   lint:
     desc: Run formatting and lint checks
     cmds:
-      - pnpm run lint
+      - bun run lint
 
   format:
     desc: Format the codebase
     cmds:
-      - pnpm run format
+      - bun run format
 
   test:
     desc: Run unit and integration tests
     cmds:
-      - pnpm run test
+      - bun run test
 
   test:unit:
     desc: Run unit tests
     cmds:
-      - pnpm run test:unit
+      - bun run test:unit
 
   test:integration:
     desc: Run integration tests
     cmds:
-      - pnpm run test:integration
+      - bun run test:integration
 
   ci:
     desc: Run the CI-equivalent local checks

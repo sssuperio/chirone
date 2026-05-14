@@ -39,15 +39,16 @@
 	}
 </script>
 
-<div class="p-8 space-y-8">
+<div class="space-y-8 p-8">
 	<div class="space-y-2">
 		<p class="font-mono text-sm text-slate-700">
-			Metriche discrete su celle. `height` e `descender` aggiornano automaticamente ascender/cap/x-height.
+			Metriche discrete su celle. `height` e `descender` aggiornano automaticamente
+			ascender/cap/x-height.
 		</p>
 		<Button on:click={applyEstimatedVerticals}>Ricalcola stime default</Button>
 	</div>
 
-	<div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+	<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
 		<div class="flex flex-col">
 			<Label target="UPM">UPM</Label>
 			<InputNumber name="UPM" bind:value={$metrics.UPM} />
@@ -68,7 +69,7 @@
 			<input
 				id="ascender"
 				name="ascender"
-				class="w-20 p-2 bg-slate-100 font-mono text-slate-700"
+				class="w-20 bg-slate-100 p-2 font-mono text-slate-700"
 				type="number"
 				value={$metrics.ascender}
 				readonly

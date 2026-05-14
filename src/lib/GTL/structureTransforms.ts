@@ -91,7 +91,11 @@ function normalizeRotation(rotation: number): number {
 }
 
 export function getCrossedQuarterTurns(previousRotation: number, rotationDelta: number): number {
-	if (!Number.isFinite(previousRotation) || !Number.isFinite(rotationDelta) || rotationDelta === 0) {
+	if (
+		!Number.isFinite(previousRotation) ||
+		!Number.isFinite(rotationDelta) ||
+		rotationDelta === 0
+	) {
 		return 0;
 	}
 
@@ -147,7 +151,10 @@ export function reflectGlyphStructureBody(
 	const reflectedSymbols = mapDirectionalSymbolsForReflection(rulesBySymbol, axis);
 
 	if (axis === 'horizontal') {
-		return [...rows].reverse().map((row) => replaceMappedSymbols(row, reflectedSymbols)).join('\n');
+		return [...rows]
+			.reverse()
+			.map((row) => replaceMappedSymbols(row, reflectedSymbols))
+			.join('\n');
 	}
 
 	const width = Math.max(0, ...rows.map((row) => Array.from(row).length));

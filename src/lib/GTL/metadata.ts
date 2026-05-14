@@ -73,10 +73,7 @@ export function normalizeFontMetadata(input: SafeFontMetadataLike): FontMetadata
 
 export const defaultFontMetadata: FontMetadata = normalizeFontMetadata(undefined);
 
-export function areFontMetadataEqual(
-	a: SafeFontMetadataLike,
-	b: SafeFontMetadataLike
-): boolean {
+export function areFontMetadataEqual(a: SafeFontMetadataLike, b: SafeFontMetadataLike): boolean {
 	const aa = normalizeFontMetadata(a);
 	const bb = normalizeFontMetadata(b);
 	return (

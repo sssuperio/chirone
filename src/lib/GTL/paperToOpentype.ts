@@ -110,9 +110,7 @@ export function normalizeAbsoluteDirectives(
 	return normalized;
 }
 
-export function getAbsoluteSVGPath(
-	path: paper.PathItem
-): Array<ArrayDirective> {
+export function getAbsoluteSVGPath(path: paper.PathItem): Array<ArrayDirective> {
 	// Getting SVG path
 	const svg = path.exportSVG({ asString: false }) as SVGElement;
 	// Getting path attribute
@@ -121,9 +119,8 @@ export function getAbsoluteSVGPath(
 	if (d) {
 		// Normalize first so the path is reduced to supported directive kinds (M/L/C/Z),
 		// then convert to absolute coordinates for OpenType conversion.
-		const absPath = new SVGPathCommander(d)
-			.normalize()
-			.toAbsolute().segments as Array<ArrayDirective>;
+		const absPath = new SVGPathCommander(d).normalize().toAbsolute()
+			.segments as Array<ArrayDirective>;
 
 		return normalizeAbsoluteDirectives(absPath);
 	} else {
@@ -146,9 +143,7 @@ type OpentypeDirective =
 
 //
 
-export function arrayToDirectives(
-	directives: Array<ArrayDirective>
-): Array<OpentypeDirective> {
+export function arrayToDirectives(directives: Array<ArrayDirective>): Array<OpentypeDirective> {
 	const dirs: Array<OpentypeDirective> = [];
 
 	if (!directives.length) {

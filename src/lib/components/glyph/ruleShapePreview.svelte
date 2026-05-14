@@ -100,7 +100,7 @@
 </script>
 
 <svg viewBox="0 0 100 100" class={className} aria-hidden="true">
-	<g transform={transform} fill="currentColor">
+	<g {transform} fill="currentColor">
 		{#if kind === ShapeKind.Rectangle}
 			<rect x="0" y="0" width="100" height="100" />
 		{:else if kind === ShapeKind.Circle}
@@ -120,8 +120,21 @@
 			<path d={tPath} />
 		{:else if kind === ShapeKind.SVG}
 			{#if hasSvgSource}
-				<rect x="10" y="10" width="80" height="80" fill="none" stroke="currentColor" stroke-width="10" />
-				<path d="M 20 70 L 40 40 L 58 58 L 80 30" fill="none" stroke="currentColor" stroke-width="10" />
+				<rect
+					x="10"
+					y="10"
+					width="80"
+					height="80"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="10"
+				/>
+				<path
+					d="M 20 70 L 40 40 L 58 58 L 80 30"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="10"
+				/>
 			{:else}
 				<rect x="0" y="0" width="100" height="100" />
 			{/if}

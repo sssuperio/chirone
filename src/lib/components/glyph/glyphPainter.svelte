@@ -270,7 +270,8 @@
 			return;
 		}
 
-		const targetRow = selectionFocusCol > 0 ? selectionFocusRow : Math.max(0, selectionFocusRow - 1);
+		const targetRow =
+			selectionFocusCol > 0 ? selectionFocusRow : Math.max(0, selectionFocusRow - 1);
 		const targetCol = selectionFocusCol > 0 ? selectionFocusCol - 1 : 0;
 		updateCell(targetRow, targetCol, ' ');
 		setSelectedCell(targetRow, targetCol);
@@ -471,28 +472,25 @@
 	on:touchcancel={() => stopDrawing()}
 />
 
-<div class="h-full min-h-0 flex flex-col gap-3">
-	<div class="shrink-0 flex flex-wrap gap-2 bg-slate-100 p-2">
+<div class="flex h-full min-h-0 flex-col gap-3">
+	<div class="flex shrink-0 flex-wrap gap-2 bg-slate-100 p-2">
 		{#if availableBrushes.length}
 			{#each availableBrushes as symbol (symbol)}
 				{@const brushRule = rulesBySymbol[symbol]}
 				<button
 					type="button"
 					title={symbol}
-							class={`relative w-14 h-14 border font-mono text-sm ${
-								selectedBrush === symbol
-									? 'bg-amber-100 border-amber-500 ring-2 ring-amber-500 ring-offset-1 ring-offset-white hover:bg-amber-200'
-									: 'bg-white hover:bg-slate-200 border-slate-300'
-							}`}
+					class={`relative h-14 w-14 border font-mono text-sm ${
+						selectedBrush === symbol
+							? 'border-amber-500 bg-amber-100 ring-2 ring-amber-500 ring-offset-1 ring-offset-white hover:bg-amber-200'
+							: 'border-slate-300 bg-white hover:bg-slate-200'
+					}`}
 					on:click={() => (selectedBrush = symbol)}
 				>
 					{#if brushRule && brushRule.shape.kind !== ShapeKind.Void}
 						<div class="relative h-full w-full text-pink-300">
 							<div class="absolute inset-[1px] rounded-sm bg-pink-100"></div>
-							<RuleShapePreview
-								rule={brushRule}
-								className="relative z-10 h-full w-full p-[1px]"
-							/>
+							<RuleShapePreview rule={brushRule} className="relative z-10 h-full w-full p-[1px]" />
 							<span
 								class="absolute inset-0 z-20 flex select-none items-center justify-center text-3xl font-black leading-none text-black"
 								>{symbol}</span
@@ -510,16 +508,16 @@
 					{/if}
 				</button>
 			{/each}
-			<p class="text-xs text-slate-500 font-mono">Alt o tasto destro: gomma</p>
-			{:else}
-				<p class="text-xs text-slate-500 font-mono">
-					Nessun simbolo disponibile dalla sintassi. Aggiungi simboli in Struttura glifo.
-				</p>
-			{/if}
+			<p class="font-mono text-xs text-slate-500">Alt o tasto destro: gomma</p>
+		{:else}
+			<p class="font-mono text-xs text-slate-500">
+				Nessun simbolo disponibile dalla sintassi. Aggiungi simboli in Struttura glifo.
+			</p>
+		{/if}
 	</div>
 
 	{#if showGrid}
-		<div class="h-0 grow min-h-0 overflow-auto bg-slate-100 p-2" style="touch-action: none;">
+		<div class="h-0 min-h-0 grow overflow-auto bg-slate-100 p-2" style="touch-action: none;">
 			<div
 				class="grid w-max border border-slate-300 bg-white"
 				style={`grid-template-columns: repeat(${gridColumns}, 2rem);`}
@@ -529,18 +527,21 @@
 						{@const cellValue = gridMatrix[row][col]}
 						{@const overlayValue = overlayMatrix[row][col]}
 						{@const componentSources = componentSourceMatrix[row][col]}
-							{@const isComponentCell = componentSources.length > 0}
-							{@const isOverlayCell = overlayValue !== ' '}
-							{@const isOverriddenComponentCell = isComponentCell && isOverlayCell}
-							{@const componentColor = isComponentCell ? getCombinedComponentColor(componentSources) : ''}
-							{@const isSelectedCell = selectionFocusRow === row && selectionFocusCol === col}
-							{@const isSelectionHighlightCell =
-								(isAllSelected || (hasRangeSelection() && isCellInSelection(row, col))) && !isSelectedCell}
-							<button
-								type="button"
-								data-grid-cell="true"
-									data-row={row}
-									data-col={col}
+						{@const isComponentCell = componentSources.length > 0}
+						{@const isOverlayCell = overlayValue !== ' '}
+						{@const isOverriddenComponentCell = isComponentCell && isOverlayCell}
+						{@const componentColor = isComponentCell
+							? getCombinedComponentColor(componentSources)
+							: ''}
+						{@const isSelectedCell = selectionFocusRow === row && selectionFocusCol === col}
+						{@const isSelectionHighlightCell =
+							(isAllSelected || (hasRangeSelection() && isCellInSelection(row, col))) &&
+							!isSelectedCell}
+						<button
+							type="button"
+							data-grid-cell="true"
+							data-row={row}
+							data-col={col}
 							style={`touch-action: none;${
 								isComponentCell && !isOverriddenComponentCell && componentColor
 									? ` color: ${componentColor};`
@@ -550,12 +551,12 @@
 									? ` background-color: color-mix(in srgb, ${componentColor} 26%, white);`
 									: ''
 							}`}
-								class={`relative w-8 h-8 border border-slate-200 font-mono text-sm text-slate-900 hover:bg-blue-100 ${
-									isSelectionHighlightCell
-										? 'bg-sky-50 shadow-[inset_0_0_0_1px_rgba(14,116,144,0.28)]'
-										: isOverriddenComponentCell
-											? 'shadow-[inset_0_0_0_1px_rgba(217,119,6,0.6)]'
-											: 'bg-white'
+							class={`relative h-8 w-8 border border-slate-200 font-mono text-sm text-slate-900 hover:bg-blue-100 ${
+								isSelectionHighlightCell
+									? 'bg-sky-50 shadow-[inset_0_0_0_1px_rgba(14,116,144,0.28)]'
+									: isOverriddenComponentCell
+										? 'shadow-[inset_0_0_0_1px_rgba(217,119,6,0.6)]'
+										: 'bg-white'
 							}`}
 							on:pointerdown={(event) => onPointerDown(row, col, event)}
 							on:touchstart|preventDefault={() => onTouchStart(row, col)}
@@ -568,7 +569,7 @@
 								<span class="text-slate-300">·</span>
 							{:else if rulesBySymbol[cellValue]}
 								{#if rulesBySymbol[cellValue].shape.kind === ShapeKind.Void}
-									<span class={isComponentCell ? 'font-mono' : 'text-slate-500 font-mono'}
+									<span class={isComponentCell ? 'font-mono' : 'font-mono text-slate-500'}
 										>{cellValue}</span
 									>
 								{:else}
@@ -585,7 +586,8 @@
 									</div>
 								{/if}
 							{:else}
-								<span class={isComponentCell ? 'font-mono text-slate-800' : 'font-mono text-red-500'}
+								<span
+									class={isComponentCell ? 'font-mono text-slate-800' : 'font-mono text-red-500'}
 									>{cellValue}</span
 								>
 							{/if}

@@ -12,7 +12,4 @@
 
 <!--  -->
 
-<a
-	class="font-mono px-3 py-1 {active ? activeClasses : inactiveClasses} "
-	{href}><slot /></a
->
+<a class="px-3 py-1 font-mono {active ? activeClasses : inactiveClasses} " {href}><slot /></a>

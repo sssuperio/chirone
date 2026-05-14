@@ -1,19 +1,20 @@
 <div
-	class="w-60 flex flex-col flex-nowrap p-6 bg-slate-100 flex-shrink-0 overflow-hidden"
+	id="sidebar-root"
+	class="flex w-60 flex-shrink-0 flex-col flex-nowrap overflow-hidden bg-slate-100 p-6"
 >
-	<div class="space-y-4 pb-4">
+	<div id="sidebar-top" class="space-y-4 pb-4">
 		<slot name="topArea" />
 
 		{#if $$slots.topArea}
 			<hr class="border-b-1 border-slate-300" />
 		{/if}
 
-		<p class="text-small font-mono text-slate-900 mb-4 text-sm">
+		<p class="text-small mb-4 font-mono text-sm text-slate-900">
 			<slot name="listTitle" />
 		</p>
 	</div>
 
-	<div class="h-0 grow overflow-y-auto space-y-1">
+	<div id="sidebar-list" class="h-0 grow space-y-1 overflow-y-auto">
 		<slot name="items" />
 	</div>
 </div>

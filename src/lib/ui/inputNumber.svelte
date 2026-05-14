@@ -6,11 +6,4 @@
 	export let step = 1;
 </script>
 
-<input
-	type="number"
-	bind:value
-	class="w-20 p-2 bg-slate-200 font-mono"
-	id={name}
-	{name}
-	{step}
-/>
+<input type="number" bind:value class="w-20 bg-slate-200 p-2 font-mono" id={name} {name} {step} />

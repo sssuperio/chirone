@@ -161,9 +161,9 @@
 	}
 </script>
 
-<div class="grow flex flex-col items-stretch overflow-x-hidden overflow-y-auto">
+<div class="flex grow flex-col items-stretch overflow-y-auto overflow-x-hidden">
 	<div
-		class="p-8 space-y-2 overflow-x-hidden shrink-0 sticky top-0 border-b border-b-gray-200 bg-white"
+		class="sticky top-0 shrink-0 space-y-2 overflow-x-hidden border-b border-b-gray-200 bg-white p-8"
 	>
 		<div class="flex flex-wrap items-end gap-4">
 			<div class="space-y-1">
@@ -200,37 +200,37 @@
 		<textarea
 			id="previewText"
 			name="previewText"
-			class="w-full min-h-32 resize-y border border-slate-300 bg-white p-3 font-mono text-sm"
+			class="min-h-32 w-full resize-y border border-slate-300 bg-white p-3 font-mono text-sm"
 			bind:value={$previewText}
 		/>
-		<p class="text-xs font-mono text-slate-500">
+		<p class="font-mono text-xs text-slate-500">
 			Usa `/nomeGlifo` per forzare un glifo (es: `Cia/a.ss01o`, `/etom.component/a`).
 		</p>
 		{#if previewHasNamedTokens}
-			<p class="text-xs font-mono text-amber-700">
+			<p class="font-mono text-xs text-amber-700">
 				In modalita CSS i token `/nomeGlifo` sono mostrati come fallback testuale.
 			</p>
 		{/if}
 	</div>
 
-	<div class="p-8 space-y-8">
+	<div class="space-y-8 p-8">
 		{#if downloadError}
-			<p class="text-sm font-mono text-red-600">Errore download: {downloadError}</p>
+			<p class="font-mono text-sm text-red-600">Errore download: {downloadError}</p>
 		{/if}
 
 		{#each $syntaxes as syntax (syntax.name)}
 			<FontGenerator glyphs={$glyphs} {syntax} metadata={$fontMetadata} let:font>
 				{#if font}
-					<div class="space-y-4 min-h-[72vh] flex flex-col">
+					<div class="flex min-h-[72vh] flex-col space-y-4">
 						<div class="flex flex-row flex-nowrap items-center space-x-8">
-							<h2 class="text-lg font-mono">{font.names.fullName.en}</h2>
+							<h2 class="font-mono text-lg">{font.names.unicode?.fullName?.en ?? font.names.windows?.fullName?.en ?? ''}</h2>
 							<Button
 								on:click={() => {
 									downloadFont(syntax);
 								}}>↓ Download</Button
 							>
 						</div>
-						<div class="grow min-h-0">
+						<div class="min-h-0 grow">
 							<FontTextPreview
 								{font}
 								text={previewHasNamedTokens ? validText : $previewText}

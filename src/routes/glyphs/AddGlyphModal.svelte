@@ -39,7 +39,9 @@
 	$: autoStructure = getAutoStructure(normalizedGlyphName);
 	$: newGlyphStructure = cloneSourceGlyph?.structure ?? autoStructure;
 	$: sortedGlyphNames = [...$glyphs.map((glyph) => glyph.name)].sort((a, b) => a.localeCompare(b));
-	$: canAdd = Boolean(normalizedGlyphName && isValidGlyphName(normalizedGlyphName) && !glyphAlreadyExists);
+	$: canAdd = Boolean(
+		normalizedGlyphName && isValidGlyphName(normalizedGlyphName) && !glyphAlreadyExists
+	);
 	$: linkedComponentAlternates = getLinkedComponentAlternatesForNewComponent(normalizedGlyphName);
 	$: missingLigatureComponents =
 		ligatureComponents.length > 1
@@ -166,7 +168,9 @@
 		return undefined;
 	}
 
-	function getLinkedComponentAlternatesForNewComponent(newComponentName: string): Array<LinkedComponentAlternate> {
+	function getLinkedComponentAlternatesForNewComponent(
+		newComponentName: string
+	): Array<LinkedComponentAlternate> {
 		const componentStylisticSet = parseComponentStylisticSetName(newComponentName);
 		if (!componentStylisticSet) return [];
 
@@ -268,7 +272,7 @@
 		<div class="space-y-1">
 			<p class="text-xs text-slate-600">Nome glifo o carattere (es: `a`, `a.ss01`, `f_f`, `f_l`)</p>
 			<input
-				class="w-full border hover:border-blue-600 px-4 py-2"
+				class="w-full border px-4 py-2 hover:border-blue-600"
 				bind:this={glyphNameInputEl}
 				bind:value={glyphNameInput}
 				placeholder="a.ss01"
@@ -279,7 +283,10 @@
 			<p class="text-xs text-slate-600">
 				Clona da glifo esistente (opzionale, copia anche componenti/frontmatter)
 			</p>
-			<select class="w-full border hover:border-blue-600 px-4 py-2" bind:value={cloneSourceGlyphName}>
+			<select
+				class="w-full border px-4 py-2 hover:border-blue-600"
+				bind:value={cloneSourceGlyphName}
+			>
 				<option value="">Nessun clone</option>
 				{#each sortedGlyphNames as glyphName (glyphName)}
 					<option value={glyphName}>{glyphName}</option>
@@ -287,7 +294,7 @@
 			</select>
 		</div>
 
-		<div class="grow bg-gray-100 flex items-center px-4 py-3 min-h-[3rem]">
+		<div class="flex min-h-[3rem] grow items-center bg-gray-100 px-4 py-3">
 			{#if !glyphNameInput.trim()}
 				<p>Inserisci un nome glifo</p>
 			{:else if !isValidGlyphName(normalizedGlyphName)}

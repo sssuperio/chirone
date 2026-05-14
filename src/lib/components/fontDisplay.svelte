@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type opentype from 'opentype.js';
+	import * as opentype from 'opentype.js';
 	import { metrics } from '$lib/stores';
 	import { normalizeFontMetrics } from '$lib/GTL/metrics';
 
@@ -66,16 +66,18 @@
 		return width;
 	}
 
-	function splitWordToFit(font: opentype.Font, word: string, maxWidth: number, size: number): Array<string> {
+	function splitWordToFit(
+		font: opentype.Font,
+		word: string,
+		maxWidth: number,
+		size: number
+	): Array<string> {
 		const chunks: Array<string> = [];
 		let current = '';
 
 		for (const char of Array.from(word)) {
 			const candidate = `${current}${char}`;
-			if (
-				current &&
-				font.getAdvanceWidth(candidate, size, { kerning: false }) > maxWidth
-			) {
+			if (current && font.getAdvanceWidth(candidate, size, { kerning: false }) > maxWidth) {
 				chunks.push(current);
 				current = char;
 			} else {
@@ -87,7 +89,12 @@
 		return chunks.length ? chunks : [word];
 	}
 
-	function wrapText(font: opentype.Font, content: string, maxWidth: number, size: number): Array<string> {
+	function wrapText(
+		font: opentype.Font,
+		content: string,
+		maxWidth: number,
+		size: number
+	): Array<string> {
 		const output: Array<string> = [];
 		for (const paragraph of content.split(/\r?\n/)) {
 			const words = paragraph.split(/\s+/).filter(Boolean);
@@ -254,7 +261,7 @@
 <div
 	bind:this={host}
 	use:observeSize
-	class={`w-full h-full min-h-[24rem] rounded border border-slate-200 bg-white overflow-hidden ${className}`}
+	class={`h-full min-h-[24rem] w-full overflow-hidden rounded border border-slate-200 bg-white ${className}`}
 >
 	<canvas
 		class="block h-full w-full"
