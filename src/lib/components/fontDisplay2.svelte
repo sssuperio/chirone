@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type opentype from 'opentype.js';
+	import * as opentype from 'opentype.js';
 	import InputNumber from '$lib/ui/inputNumber.svelte';
 	import Label from '$lib/ui/label.svelte';
 	import { nanoid } from 'nanoid';

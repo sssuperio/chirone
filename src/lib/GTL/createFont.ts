@@ -11,7 +11,7 @@ import {
 import { calcTransform, applyTransform } from './shapes';
 import { getAbsoluteSVGPath, arrayToDirectives, editPathFromDirectives } from './paperToOpentype';
 import paper from 'paper';
-import opentype from 'opentype.js';
+import * as opentype from 'opentype.js';
 import type { FontMetrics } from './metrics';
 import { cellsToUnits, normalizeFontMetrics, unitsPerCell } from './metrics';
 import type { FontMetadata } from './metadata';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import type opentype from 'opentype.js';
+	import * as opentype from 'opentype.js';
 
 	export let font: opentype.Font;
 	export let text = '';

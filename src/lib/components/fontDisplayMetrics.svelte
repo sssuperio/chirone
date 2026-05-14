@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type opentype from 'opentype.js';
+	import * as opentype from 'opentype.js';
 	import { metrics } from '$lib/stores';
 	import { cellsToUnits, normalizeFontMetrics } from '$lib/GTL/metrics';
 

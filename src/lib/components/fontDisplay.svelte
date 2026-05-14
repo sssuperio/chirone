@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type opentype from 'opentype.js';
+	import * as opentype from 'opentype.js';
 	import { metrics } from '$lib/stores';
 	import { normalizeFontMetrics } from '$lib/GTL/metrics';
 
