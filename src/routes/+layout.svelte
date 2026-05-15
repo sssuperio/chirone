@@ -13,7 +13,13 @@
 		initCollabSync
 	} from '$lib/collab/client';
 	import { migrateFromLegacyStores } from '$lib/stores/migration';
-	import { activeFontId, fontDefinitions } from '$lib/stores';
+	import {
+		activeFontId,
+		fontDefinitions,
+		glyphs,
+		switchToFont,
+		saveGlyphsForFont
+	} from '$lib/stores';
 	import NavLink from '$lib/ui/navLink.svelte';
 
 	const links = [
@@ -24,6 +30,17 @@
 		{ href: `${base}/revisioni`, text: 'Revisioni' },
 		{ href: `${base}/project`, text: 'Progetto' }
 	];
+
+	$: if (!$activeFontId && $fontDefinitions.length > 0) {
+		$activeFontId = $fontDefinitions[0].id;
+	}
+
+	function handleFontChange(event: Event) {
+		const newId = (event.target as HTMLSelectElement).value;
+		if (newId && newId !== $activeFontId) {
+			switchToFont(newId, $activeFontId);
+		}
+	}
 
 	onMount(() => {
 		migrateFromLegacyStores();
@@ -46,7 +63,8 @@
 			{#if $fontDefinitions.length > 0}
 				<select
 					class="border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-slate-200"
-					bind:value={$activeFontId}
+					value={$activeFontId}
+					on:change={handleFontChange}
 				>
 					{#each $fontDefinitions as f (f.id)}
 						<option value={f.id}>{f.name}</option>

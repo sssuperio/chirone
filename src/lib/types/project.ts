@@ -17,7 +17,6 @@ export interface FontDefinition {
 	syntaxId: string;
 	metricsId: string;
 	metadataId: string;
-	glyphIds?: string[];
 	outputName: string;
 	enabled: boolean;
 }

@@ -622,9 +622,6 @@
 		if (showOnlyUndesignedGlyphs && isGlyphDesigned(glyph)) {
 			return false;
 		}
-		if (fontFiltersGlyphs && !activeFontGlyphIds!.includes(glyph.id)) {
-			return false;
-		}
 		return true;
 	});
 	$: if (filteredGlyphs.length && !filteredGlyphs.some((glyph) => glyph.id === $selectedGlyph)) {

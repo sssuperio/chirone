@@ -116,6 +116,9 @@ export function migrateFromLegacyStores(): boolean {
 			fontDefinitions.set([fontDef]);
 		}
 
+		// Save existing glyphs to the default font's per-font storage
+		saveGlyphsForFont(fontDef.id, get(glyphs));
+
 		window.localStorage.setItem(MIGRATION_FLAG, '1');
 		return true;
 	} catch {

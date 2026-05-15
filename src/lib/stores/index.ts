@@ -1,5 +1,5 @@
 import { persisted } from 'svelte-local-storage-store';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type {
 	Syntax,
 	GlyphInput,
@@ -74,4 +74,41 @@ export function resolveSyntaxName(
 ): string {
 	const s = syntaxes.find((s) => s.id === id);
 	return s?.name ?? id;
+}
+
+const FONT_GLYPHS_PREFIX = 'chirone-glyphs-';
+
+function fontGlyphsKey(fontId: string): string {
+	return FONT_GLYPHS_PREFIX + fontId;
+}
+
+export function saveGlyphsForFont(fontId: string, glyphsList: Array<GlyphInput>): void {
+	if (typeof window === 'undefined' || !fontId) return;
+	try {
+		window.localStorage.setItem(fontGlyphsKey(fontId), JSON.stringify(glyphsList));
+	} catch {
+		/* ignore */
+	}
+}
+
+export function loadGlyphsForFont(fontId: string): Array<GlyphInput> {
+	if (typeof window === 'undefined' || !fontId) return [];
+	try {
+		const raw = window.localStorage.getItem(fontGlyphsKey(fontId));
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		if (Array.isArray(parsed)) return parsed as Array<GlyphInput>;
+	} catch {
+		/* ignore */
+	}
+	return [];
+}
+
+export function switchToFont(newFontId: string, oldFontId: string): void {
+	if (oldFontId && oldFontId !== newFontId) {
+		saveGlyphsForFont(oldFontId, get(glyphs));
+	}
+	const loaded = loadGlyphsForFont(newFontId);
+	glyphs.set(loaded);
+	activeFontId.set(newFontId);
 }
