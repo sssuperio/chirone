@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -33,6 +34,34 @@ func adminPassword() string {
 		return pw
 	}
 	return "ch1r0ne"
+}
+
+func loadEnvFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.IndexByte(line, '=')
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if key == "" {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); !exists {
+			os.Setenv(key, val)
+		}
+	}
 }
 
 //go:embed all:web/dist
@@ -3156,6 +3185,7 @@ func requestLogger(next http.Handler) http.Handler {
 }
 
 func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
+	loadEnvFile(".env")
 	resolvedUIDir := strings.TrimSpace(uiDir)
 	srv := &server{
 		hub:         newHub(dataDir),
