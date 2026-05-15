@@ -336,7 +336,18 @@
 		exportProjectArchive().catch(() => {});
 
 		projectInfo.set(importData.projectInfo);
-		glyphs.set(importData.glyphs);
+		// Restore per-font glyphs
+		const firstFontId = importData.fontDefinitions[0]?.id;
+		if (firstFontId && importData.perFontGlyphs.has(firstFontId)) {
+			glyphs.set(importData.perFontGlyphs.get(firstFontId)!);
+		} else {
+			glyphs.set([]);
+		}
+		for (const [fontId, fontGlyphs] of importData.perFontGlyphs) {
+			if (fontId !== firstFontId) {
+				saveGlyphsForFont(fontId, fontGlyphs);
+			}
+		}
 		syntaxes.set(importData.syntaxes);
 		metricsPresets.set(importData.metricsPresets);
 		metadataPresets.set(importData.metadataPresets);

@@ -84,8 +84,9 @@ function fontGlyphsKey(fontId: string): string {
 
 export function saveGlyphsForFont(fontId: string, glyphsList: Array<GlyphInput>): void {
 	if (typeof window === 'undefined' || !fontId) return;
+	const list = glyphsList ?? [];
 	try {
-		window.localStorage.setItem(fontGlyphsKey(fontId), JSON.stringify(glyphsList));
+		window.localStorage.setItem(fontGlyphsKey(fontId), JSON.stringify(list));
 	} catch {
 		/* ignore */
 	}
