@@ -13,6 +13,7 @@
 		initCollabSync
 	} from '$lib/collab/client';
 	import { migrateFromLegacyStores } from '$lib/stores/migration';
+	import { activeFontId, fontDefinitions } from '$lib/stores';
 	import NavLink from '$lib/ui/navLink.svelte';
 
 	const links = [
@@ -42,6 +43,19 @@
 		{/each}
 
 		<div class="ml-auto flex min-w-0 items-center gap-3 font-mono text-xs">
+			{#if $fontDefinitions.length > 0}
+				<select
+					class="border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+					bind:value={$activeFontId}
+				>
+					{#each $fontDefinitions as f (f.id)}
+						<option value={f.id}>{f.name}</option>
+					{/each}
+				</select>
+			{/if}
+		</div>
+
+		<div class="flex min-w-0 items-center gap-3 font-mono text-xs">
 			{#if $collabStatus.enabled}
 				<span
 					class:text-emerald-300={$collabStatus.state === 'connected'}

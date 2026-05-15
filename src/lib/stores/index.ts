@@ -42,6 +42,7 @@ fontMetadata.subscribe((current) => {
 });
 
 export const selectedGlyph = writable('');
+export const activeFontId = persisted<string>('activeFontId', '');
 export const previewText = writable('Hello World!');
 export const syntaxPreviewText = writable('hey');
 

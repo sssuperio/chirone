@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { GlyphInput, Rule, Syntax } from '$lib/types';
-	import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
+	import {
+		glyphs,
+		metrics,
+		selectedGlyph,
+		syntaxes,
+		activeFontId,
+		fontDefinitions
+	} from '$lib/stores';
 
 	import Sidebar from '$lib/ui/sidebar.svelte';
 	import SidebarTile from '$lib/ui/sidebarTile.svelte';
@@ -33,6 +40,9 @@
 		replaceMappedSymbols,
 		rotateGlyphStructureBody
 	} from '$lib/GTL/structureTransforms';
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: activeSyntax = $syntaxes.find((s) => s.id === activeFont?.syntaxId);
 
 	//
 

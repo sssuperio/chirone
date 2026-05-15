@@ -1,10 +1,13 @@
 <script lang="ts">
-	import { metrics, metricsPresets } from '$lib/stores';
+	import { metrics, metricsPresets, activeFontId, fontDefinitions } from '$lib/stores';
 	import { areMetricsEqual, estimateVerticalMetrics, normalizeFontMetrics } from '$lib/GTL/metrics';
 
 	import InputNumber from '$lib/ui/inputNumber.svelte';
 	import Label from '$lib/ui/label.svelte';
 	import Button from '$lib/ui/button.svelte';
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: activeMetricsPreset = $metricsPresets.find((m) => m.id === activeFont?.metricsId);
 
 	$: {
 		const currentPresets = $metricsPresets;
@@ -24,6 +27,9 @@
 			}
 		}
 	}
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: activeMetricsPreset = $metricsPresets.find((m) => m.id === activeFont?.metricsId);
 
 	$: {
 		const currentPresets = $metricsPresets;
@@ -82,6 +88,15 @@
 </script>
 
 <div class="space-y-8 p-8">
+	{#if activeFont}
+		<div class="rounded bg-slate-100 px-3 py-2 font-mono text-xs">
+			<span class="text-slate-500">Font: </span>
+			<span class="font-semibold">{activeFont.name}</span>
+			{#if activeMetricsPreset}
+				<span class="text-slate-400"> &middot; Metrics: {activeMetricsPreset.name}</span>
+			{/if}
+		</div>
+	{/if}
 	<div class="space-y-2">
 		<p class="font-mono text-sm text-slate-700">
 			Metriche discrete su celle. `height` e `descender` aggiornano automaticamente
