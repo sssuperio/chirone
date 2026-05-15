@@ -24,9 +24,80 @@
 		detectArchiveFormat
 	} from '$lib/archive';
 	import type { MetadataPreset, FontDefinition } from '$lib/types';
+	import { collabConfig, collabStatus, setCollabProject } from '$lib/collab/client';
 	import Button from '$lib/ui/button.svelte';
 	import Upload from '$lib/ui/upload.svelte';
 	import { Modal } from 'flowbite-svelte';
+	import { onMount } from 'svelte';
+
+	let serverProjects: Array<{
+		project: string;
+		version: number;
+		hasPassword: boolean;
+	}> = [];
+	let projectsLoading = false;
+	let projectsError = '';
+	let showCreateProject = false;
+	let newProjectName = '';
+	let newProjectPassword = '';
+	let adminPasswordInput = '';
+	let creatingProject = false;
+
+	async function loadServerProjects() {
+		projectsLoading = true;
+		projectsError = '';
+		try {
+			const base = $collabConfig.base;
+			const res = await fetch(`${base}/api/projects`, { cache: 'no-store' });
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = await res.json();
+			serverProjects = data.projects ?? [];
+		} catch (e) {
+			projectsError = e instanceof Error ? e.message : String(e);
+		} finally {
+			projectsLoading = false;
+		}
+	}
+
+	async function switchToServerProject(id: string) {
+		setCollabProject(id);
+	}
+
+	async function createServerProject() {
+		if (!newProjectName.trim()) return;
+		creatingProject = true;
+		try {
+			const base = $collabConfig.base;
+			const res = await fetch(`${base}/api/project/create`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Admin-Password': adminPasswordInput
+				},
+				body: JSON.stringify({
+					project: newProjectName.trim(),
+					password: newProjectPassword || undefined
+				})
+			});
+			if (!res.ok) {
+				const text = await res.text();
+				throw new Error(text || `HTTP ${res.status}`);
+			}
+			showCreateProject = false;
+			newProjectName = '';
+			newProjectPassword = '';
+			adminPasswordInput = '';
+			loadServerProjects();
+		} catch (e) {
+			projectsError = e instanceof Error ? e.message : String(e);
+		} finally {
+			creatingProject = false;
+		}
+	}
+
+	onMount(() => {
+		if ($collabConfig.enabled) loadServerProjects();
+	});
 
 	let editingFont: FontDefinition | null = null;
 	let fontFormOpen = false;
@@ -298,6 +369,74 @@
 
 <div class="flex grow flex-col overflow-y-auto overflow-x-hidden">
 	<div class="space-y-8 p-8">
+		{#if $collabConfig.enabled}
+			<div class="space-y-3 rounded border border-slate-200 p-4">
+				<div class="flex items-center gap-3">
+					<p class="font-mono text-sm font-semibold">Progetto sync</p>
+					<span class="rounded bg-slate-200 px-2 py-0.5 font-mono text-xs">
+						{$collabStatus.project}
+					</span>
+					<Button on:click={loadServerProjects}>
+						{projectsLoading ? '...' : 'Aggiorna'}
+					</Button>
+					<Button on:click={() => (showCreateProject = !showCreateProject)}>
+						{showCreateProject ? 'Annulla' : '+ Nuovo'}
+					</Button>
+				</div>
+
+				{#if showCreateProject}
+					<div class="space-y-2 rounded bg-slate-50 p-3 font-mono">
+						<p class="text-xs text-slate-600">Crea nuovo progetto (password admin richiesta)</p>
+						<input
+							class="w-full border border-slate-400 px-3 py-2 text-sm"
+							placeholder="Nome progetto"
+							bind:value={newProjectName}
+						/>
+						<input
+							class="w-full border border-slate-400 px-3 py-2 text-sm"
+							type="password"
+							placeholder="Password admin"
+							bind:value={adminPasswordInput}
+						/>
+						<input
+							class="w-full border border-slate-400 px-3 py-2 text-sm"
+							type="password"
+							placeholder="Password progetto (opzionale)"
+							bind:value={newProjectPassword}
+						/>
+						<Button
+							disabled={!newProjectName.trim() || !adminPasswordInput || creatingProject}
+							on:click={createServerProject}
+						>
+							{creatingProject ? 'Creazione...' : 'Crea progetto'}
+						</Button>
+					</div>
+				{/if}
+
+				{#if projectsError}
+					<p class="font-mono text-xs text-red-600">{projectsError}</p>
+				{/if}
+
+				{#if serverProjects.length > 1}
+					<div class="flex flex-wrap gap-1">
+						{#each serverProjects as p (p.project)}
+							<button
+								class="rounded px-2 py-1 font-mono text-xs hover:bg-slate-200 {$collabStatus.project ===
+								p.project
+									? 'bg-slate-300 font-semibold'
+									: 'bg-slate-100'}"
+								on:click={() => switchToServerProject(p.project)}
+							>
+								{p.project}
+								{#if p.hasPassword}
+									🔒{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Project Name -->
 		<div class="space-y-2">
 			<p class="font-mono text-lg">Progetto</p>
