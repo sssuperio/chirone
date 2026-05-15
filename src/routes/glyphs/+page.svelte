@@ -1257,7 +1257,7 @@
 							<div id="glyphs-editor-content" class="flex h-0 min-h-0 grow flex-col gap-2">
 								<div
 									id="glyphs-painter-container"
-									class={activeGlyphEditorTab === 'visualDesign' ? 'h-0 min-h-0 grow' : 'shrink-0'}
+									class="h-0 min-h-0 grow"
 								>
 									<GlyphPainter
 										bind:structure={g.structure}
@@ -1269,58 +1269,55 @@
 										showGrid={activeGlyphEditorTab === 'visualDesign'}
 										on:change={scheduleTouchGlyphs}
 									/>
-								</div>
-
-								{#if activeGlyphEditorTab === 'glyphStructure'}
-									<div
-										id="glyphs-structure-editor"
-										class={`flex h-full min-h-0 grow flex-col gap-2 ${
-											glyphComponents.length ? 'xl:flex-row' : ''
-										}`}
-									>
+									{#if activeGlyphEditorTab === 'glyphStructure'}
 										<div
-											id="glyphs-structure-input"
-											class="flex h-full min-h-0 grow flex-col gap-1 xl:flex-1 xl:basis-0"
+											id="glyphs-structure-editor"
+											class="flex h-full min-h-0 grow flex-col gap-2"
 										>
 											<div
-												class="flex shrink-0 items-center justify-between font-mono text-xs text-slate-500"
-											>
-												<span>rows: 1..{glyphStructureLineCount}</span>
-												<span>cols: 1..{glyphStructureColumnCount}</span>
-											</div>
-											<textarea
-												class="h-full min-h-0 grow bg-slate-200 p-2 font-mono text-xl hover:bg-slate-300 focus:ring-4"
-												value={glyphStructureValue}
-												wrap="off"
-												spellcheck="false"
-												on:input={(event) => {
-													handleGlyphStructureInput(g, inputValue(event));
-												}}
-											/>
-										</div>
-
-										{#if glyphComponents.length}
-											<div
-												id="glyphs-structure-component-view"
-												class="flex h-full min-h-0 grow flex-col gap-1 xl:flex-1 xl:basis-0"
+												id="glyphs-structure-input"
+												class="flex h-0 min-h-0 grow flex-col gap-1"
 											>
 												<div
 													class="flex shrink-0 items-center justify-between font-mono text-xs text-slate-500"
 												>
-													<span>Component symbol map</span>
-													<span>read-only</span>
+													<span>rows: 1..{glyphStructureLineCount}</span>
+													<span>cols: 1..{glyphStructureColumnCount}</span>
 												</div>
 												<textarea
-													class="h-full min-h-0 grow bg-slate-100 p-2 font-mono text-xl text-slate-700"
-													value={glyphStructureComponentSymbolViewValue}
+													class="h-full min-h-0 grow bg-slate-200 p-2 font-mono text-xl hover:bg-slate-300 focus:ring-4"
+													value={glyphStructureValue}
 													wrap="off"
 													spellcheck="false"
-													readonly
+													on:input={(event) => {
+														handleGlyphStructureInput(g, inputValue(event));
+													}}
 												/>
 											</div>
-										{/if}
-									</div>
-								{/if}
+
+											{#if glyphComponents.length}
+												<div
+													id="glyphs-structure-component-view"
+													class="flex h-0 min-h-0 grow flex-col gap-1"
+												>
+													<div
+														class="flex shrink-0 items-center justify-between font-mono text-xs text-slate-500"
+													>
+														<span>Component symbol map</span>
+														<span>read-only</span>
+													</div>
+													<textarea
+														class="h-full min-h-0 grow bg-slate-100 p-2 font-mono text-xl text-slate-700"
+														value={glyphStructureComponentSymbolViewValue}
+														wrap="off"
+														spellcheck="false"
+														readonly
+													/>
+												</div>
+											{/if}
+										</div>
+									{/if}
+								</div>
 							</div>
 						</div>
 					</div>
