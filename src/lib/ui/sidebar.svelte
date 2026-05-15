@@ -1,6 +1,6 @@
 <div
 	id="sidebar-root"
-	class="flex w-60 flex-shrink-0 flex-col flex-nowrap overflow-hidden bg-slate-100 p-6"
+	class="flex w-60 flex-shrink-0 flex-col flex-nowrap overflow-hidden bg-slate-100 p-3"
 >
 	<div id="sidebar-top" class="space-y-4 pb-4">
 		<slot name="topArea" />
