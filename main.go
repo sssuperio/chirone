@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -49,9 +51,10 @@ type projectSnapshot struct {
 }
 
 type projectDocument struct {
-	Project   string `json:"project"`
-	Version   int64  `json:"version"`
-	UpdatedAt string `json:"updatedAt"`
+	Project      string `json:"project"`
+	Version      int64  `json:"version"`
+	UpdatedAt    string `json:"updatedAt"`
+	PasswordHash string `json:"passwordHash,omitempty"`
 	projectSnapshot
 }
 
@@ -186,6 +189,41 @@ type revertRevisionRequest struct {
 type appVersionResponse struct {
 	Version string `json:"version"`
 	SHA     string `json:"sha"`
+}
+
+type projectMeta struct {
+	Project     string `json:"project"`
+	Version     int64  `json:"version"`
+	UpdatedAt   string `json:"updatedAt"`
+	HasPassword bool   `json:"hasPassword"`
+}
+
+type projectListResponse struct {
+	Projects []projectMeta `json:"projects"`
+}
+
+type projectAuthRequest struct {
+	Password string `json:"password"`
+}
+
+type projectSetPasswordRequest struct {
+	Password    string `json:"password"`
+	OldPassword string `json:"oldPassword,omitempty"`
+}
+
+func hashPassword(password string) string {
+	if password == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte("chirone:" + password))
+	return hex.EncodeToString(h[:])
+}
+
+func verifyPassword(password, hash string) bool {
+	if hash == "" {
+		return true
+	}
+	return hashPassword(password) == hash
 }
 
 func (e *versionConflictError) Error() string {
@@ -2257,6 +2295,173 @@ func writeEntityConflict(w http.ResponseWriter, projectID string, conflictErr *e
 	})
 }
 
+func (s *server) projectNeedsPassword(projectID string) bool {
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil || !exists {
+		return false
+	}
+	return doc.PasswordHash != ""
+}
+
+func (s *server) checkProjectPassword(r *http.Request, projectID string) bool {
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil || !exists {
+		return true
+	}
+	if doc.PasswordHash == "" {
+		return true
+	}
+	password := r.Header.Get("X-Chirone-Password")
+	return verifyPassword(password, doc.PasswordHash)
+}
+
+func (s *server) handleProjectAuth(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req projectAuthRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	if !verifyPassword(req.Password, doc.PasswordHash) {
+		http.Error(w, "invalid password", http.StatusForbidden)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *server) handleProjectPassword(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req projectSetPasswordRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	if !verifyPassword(req.OldPassword, doc.PasswordHash) {
+		http.Error(w, "invalid current password", http.StatusForbidden)
+		return
+	}
+
+	doc.PasswordHash = hashPassword(req.Password)
+	if err := s.hub.saveProjectToDisk(doc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *server) handleProjectList(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	h := s.hub
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	entries, err := os.ReadDir(h.dataDir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(projectListResponse{Projects: []projectMeta{}})
+		return
+	}
+
+	projects := make([]projectMeta, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if pathpkg.Ext(name) != ".json" {
+			continue
+		}
+		projectID := strings.TrimSuffix(name, ".json")
+		if !projectIDPattern.MatchString(projectID) {
+			continue
+		}
+
+		doc, err := h.loadProjectFromDisk(projectID)
+		if err != nil {
+			continue
+		}
+
+		projects = append(projects, projectMeta{
+			Project:     doc.Project,
+			Version:     doc.Version,
+			UpdatedAt:   doc.UpdatedAt,
+			HasPassword: doc.PasswordHash != "",
+		})
+	}
+
+	sort.Slice(projects, func(i, j int) bool {
+		return projects[i].Project < projects[j].Project
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(projectListResponse{Projects: projects})
+}
+
 func (s *server) handleProject(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
 	if r.Method == http.MethodOptions {
@@ -2454,6 +2659,10 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
 		defer func() {
 			_ = r.Body.Close()
 		}()
@@ -2475,6 +2684,10 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	case http.MethodDelete:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
 		defer func() {
 			_ = r.Body.Close()
 		}()
@@ -2514,6 +2727,10 @@ func (s *server) handleSyntax(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
 		defer func() {
 			_ = r.Body.Close()
 		}()
@@ -2574,6 +2791,11 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
 	if projectID == "" {
 		projectID = "default"
+	}
+
+	if !s.checkProjectPassword(r, projectID) {
+		http.Error(w, "invalid password", http.StatusForbidden)
+		return
 	}
 
 	defer func() {
@@ -2819,6 +3041,9 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/project", s.handleProject)
+	mux.HandleFunc("/api/projects", s.handleProjectList)
+	mux.HandleFunc("/api/project/auth", s.handleProjectAuth)
+	mux.HandleFunc("/api/project/password", s.handleProjectPassword)
 	mux.HandleFunc("/api/project-version", s.handleProjectVersion)
 	mux.HandleFunc("/api/revisions", s.handleRevisions)
 	mux.HandleFunc("/api/revisions/revert", s.handleRevisionRevert)

@@ -531,6 +531,15 @@ function stopRuntime() {
 	stop();
 }
 
+function getStoredPassword(projectID: string): string {
+	if (typeof window === 'undefined') return '';
+	try {
+		return window.localStorage.getItem(`chirone-pwd-${projectID}`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
 function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const clientID = buildClientID();
 	const projectURL = `${serverBase}/api/project?project=${encodeURIComponent(projectID)}`;

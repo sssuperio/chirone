@@ -23,6 +23,7 @@
 	import Tooltip from '$lib/ui/tooltip.svelte';
 	import { Modal } from 'flowbite-svelte';
 	import { currentSyntaxId } from '../syntax/+page.svelte';
+	import { onMount } from 'svelte';
 
 	/**
 	 * Clear project
