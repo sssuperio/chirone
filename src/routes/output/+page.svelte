@@ -34,6 +34,14 @@
 
 	$: enabledFonts = $fontDefinitions.filter((f) => f.enabled);
 
+	let selectedFontId = '';
+	$: {
+		if (!selectedFontId && enabledFonts.length > 0) {
+			selectedFontId = enabledFonts[0].id;
+		}
+	}
+	$: displayedFonts = enabledFonts.filter((f) => !selectedFontId || f.id === selectedFontId);
+
 	type PreviewPreset = {
 		id: string;
 		label: string;
@@ -254,7 +262,22 @@
 			<p class="font-mono text-sm text-red-600">Errore download: {downloadError}</p>
 		{/if}
 
-		{#each enabledFonts as fontDef (fontDef.id)}
+		{#if enabledFonts.length > 1}
+			<div class="flex items-center gap-4">
+				<Label target="fontSelector">Font</Label>
+				<select
+					id="fontSelector"
+					class="h-10 min-w-52 bg-slate-200 px-2 font-mono text-sm"
+					bind:value={selectedFontId}
+				>
+					{#each enabledFonts as f (f.id)}
+						<option value={f.id}>{f.name}</option>
+					{/each}
+				</select>
+			</div>
+		{/if}
+
+		{#each displayedFonts as fontDef (fontDef.id)}
 			{@const syntax = resolveSyntax(fontDef.syntaxId)}
 			{@const resolvedMetrics = resolveMetrics(fontDef.metricsId)}
 			{@const resolvedMetadata = resolveMetadata(fontDef.metadataId)}

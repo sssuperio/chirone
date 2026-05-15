@@ -22,7 +22,6 @@
 	} from '$lib/archive';
 	import type { MetadataPreset, FontDefinition } from '$lib/types';
 	import Button from '$lib/ui/button.svelte';
-	import DeleteButton from '$lib/ui/deleteButton.svelte';
 	import Upload from '$lib/ui/upload.svelte';
 	import { Modal } from 'flowbite-svelte';
 
@@ -369,7 +368,10 @@
 											class="px-2 py-1 text-xs hover:bg-slate-200"
 											on:click={() => duplicateFont(font)}>Duplica</button
 										>
-										<DeleteButton on:click={() => (deleteFontId = font.id)} />
+										<button
+											class="px-2 py-1 text-xs text-red-600 hover:bg-red-100"
+											on:click={() => (deleteFontId = font.id)}>Elimina</button
+										>
 									</td>
 								</tr>
 							{/each}
