@@ -11,7 +11,10 @@
 		fontMetadata,
 		selectedGlyph,
 		resolvePresetName,
-		resolveSyntaxName
+		resolveSyntaxName,
+		activeFontId,
+		loadGlyphsForFont,
+		saveGlyphsForFont
 	} from '$lib/stores';
 	import { normalizeFontMetadata, defaultFontMetadata } from '$lib/GTL/metadata';
 	import {
@@ -117,6 +120,12 @@
 			outputName: font.outputName.replace(/\.otf$/, ' (copy).otf')
 		};
 		fontDefinitions.set([...$fontDefinitions, copy]);
+
+		// Copy the source font's glyphs to the new font
+		const sourceGlyphs = font.id === $activeFontId ? $glyphs : loadGlyphsForFont(font.id);
+		if (sourceGlyphs.length > 0) {
+			saveGlyphsForFont(copy.id, JSON.parse(JSON.stringify(sourceGlyphs)));
+		}
 	}
 
 	function saveProjectName() {
