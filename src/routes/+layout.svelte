@@ -12,6 +12,7 @@
 		initAppVersionInfo,
 		initCollabSync
 	} from '$lib/collab/client';
+	import { migrateFromLegacyStores } from '$lib/stores/migration';
 	import NavLink from '$lib/ui/navLink.svelte';
 
 	const links = [
@@ -20,10 +21,11 @@
 		{ href: `${base}/metrics`, text: 'Metriche' },
 		{ href: `${base}/output`, text: 'Output' },
 		{ href: `${base}/revisioni`, text: 'Revisioni' },
-		{ href: `${base}/settings`, text: 'Impostazioni' }
+		{ href: `${base}/project`, text: 'Progetto' }
 	];
 
 	onMount(() => {
+		migrateFromLegacyStores();
 		initAppVersionInfo();
 		const stop = initCollabSync();
 		return () => {

@@ -1,10 +1,52 @@
 <script lang="ts">
-	import { metrics } from '$lib/stores';
+	import { metrics, metricsPresets } from '$lib/stores';
 	import { areMetricsEqual, estimateVerticalMetrics, normalizeFontMetrics } from '$lib/GTL/metrics';
 
 	import InputNumber from '$lib/ui/inputNumber.svelte';
 	import Label from '$lib/ui/label.svelte';
 	import Button from '$lib/ui/button.svelte';
+
+	$: {
+		const currentPresets = $metricsPresets;
+		if (currentPresets.length > 0) {
+			const preset = currentPresets[0];
+			const normalizedPresetMetrics = {
+				UPM: preset.UPM,
+				height: preset.height,
+				baseline: preset.baseline,
+				descender: preset.descender,
+				ascender: preset.ascender,
+				capHeight: preset.capHeight,
+				xHeight: preset.xHeight
+			};
+			if (!areMetricsEqual($metrics, normalizedPresetMetrics)) {
+				$metrics = normalizedPresetMetrics;
+			}
+		}
+	}
+
+	$: {
+		const currentPresets = $metricsPresets;
+		const normalized = normalizeFontMetrics($metrics);
+		if (currentPresets.length > 0) {
+			const preset = currentPresets[0];
+			if (
+				preset.UPM !== normalized.UPM ||
+				preset.height !== normalized.height ||
+				preset.baseline !== normalized.baseline ||
+				preset.descender !== normalized.descender ||
+				preset.ascender !== normalized.ascender ||
+				preset.capHeight !== normalized.capHeight ||
+				preset.xHeight !== normalized.xHeight
+			) {
+				currentPresets[0] = { ...preset, ...normalized };
+				metricsPresets.set([...currentPresets]);
+			}
+		} else {
+			currentPresets.push({ id: 'default', name: 'Default', ...normalized });
+			metricsPresets.set([...currentPresets]);
+		}
+	}
 
 	let lastHeight = 0;
 	let lastDescender = 0;

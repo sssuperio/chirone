@@ -39,9 +39,13 @@ func init() {
 }
 
 type projectSnapshot struct {
-	Glyphs   json.RawMessage `json:"glyphs"`
-	Syntaxes json.RawMessage `json:"syntaxes"`
-	Metrics  json.RawMessage `json:"metrics"`
+	Glyphs          json.RawMessage `json:"glyphs"`
+	Syntaxes        json.RawMessage `json:"syntaxes"`
+	Metrics         json.RawMessage `json:"metrics"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	MetricsPresets  json.RawMessage `json:"metricsPresets,omitempty"`
+	MetadataPresets json.RawMessage `json:"metadataPresets,omitempty"`
+	Fonts           json.RawMessage `json:"fonts,omitempty"`
 }
 
 type projectDocument struct {
@@ -126,9 +130,12 @@ type entityUpdateResponse struct {
 
 type projectResponse struct {
 	projectDocument
-	GlyphVersions  map[string]int64 `json:"glyphVersions,omitempty"`
-	SyntaxVersions map[string]int64 `json:"syntaxVersions,omitempty"`
-	MetricsVersion int64            `json:"metricsVersion,omitempty"`
+	GlyphVersions           map[string]int64 `json:"glyphVersions,omitempty"`
+	SyntaxVersions          map[string]int64 `json:"syntaxVersions,omitempty"`
+	MetricsVersion          int64            `json:"metricsVersion,omitempty"`
+	MetricsPresetsVersions  map[string]int64 `json:"metricsPresetsVersions,omitempty"`
+	MetadataPresetsVersions map[string]int64 `json:"metadataPresetsVersions,omitempty"`
+	FontsVersions           map[string]int64 `json:"fontsVersions,omitempty"`
 }
 
 type projectVersionResponse struct {
@@ -201,14 +208,21 @@ type projectEvent struct {
 }
 
 type projectState struct {
-	Doc            projectDocument
-	Glyphs         map[string]json.RawMessage
-	Syntaxes       map[string]json.RawMessage
-	Metrics        json.RawMessage
-	GlyphVersions  map[string]int64
-	SyntaxVersions map[string]int64
-	MetricsVersion int64
-	Subs           map[chan projectEvent]struct{}
+	Doc                    projectDocument
+	Glyphs                 map[string]json.RawMessage
+	Syntaxes               map[string]json.RawMessage
+	Metrics                json.RawMessage
+	Metadata               json.RawMessage
+	MetricsPresets         map[string]json.RawMessage
+	MetadataPresets        map[string]json.RawMessage
+	Fonts                  map[string]json.RawMessage
+	GlyphVersions          map[string]int64
+	SyntaxVersions         map[string]int64
+	MetricsVersion         int64
+	MetricsPresetsVersion  map[string]int64
+	MetadataPresetsVersion map[string]int64
+	FontsVersion           map[string]int64
+	Subs                   map[chan projectEvent]struct{}
 }
 
 type hub struct {
@@ -257,6 +271,42 @@ func normalizeSnapshot(snapshot projectSnapshot) (projectSnapshot, error) {
 			return out, errors.New("metrics is not valid JSON")
 		}
 		out.Metrics = snapshot.Metrics
+	}
+
+	if len(snapshot.Metadata) == 0 {
+		out.Metadata = json.RawMessage(`{}`)
+	} else {
+		if !json.Valid(snapshot.Metadata) {
+			return out, errors.New("metadata is not valid JSON")
+		}
+		out.Metadata = snapshot.Metadata
+	}
+
+	if len(snapshot.MetricsPresets) == 0 {
+		out.MetricsPresets = json.RawMessage(`[]`)
+	} else {
+		if !json.Valid(snapshot.MetricsPresets) {
+			return out, errors.New("metricsPresets is not valid JSON")
+		}
+		out.MetricsPresets = snapshot.MetricsPresets
+	}
+
+	if len(snapshot.MetadataPresets) == 0 {
+		out.MetadataPresets = json.RawMessage(`[]`)
+	} else {
+		if !json.Valid(snapshot.MetadataPresets) {
+			return out, errors.New("metadataPresets is not valid JSON")
+		}
+		out.MetadataPresets = snapshot.MetadataPresets
+	}
+
+	if len(snapshot.Fonts) == 0 {
+		out.Fonts = json.RawMessage(`[]`)
+	} else {
+		if !json.Valid(snapshot.Fonts) {
+			return out, errors.New("fonts is not valid JSON")
+		}
+		out.Fonts = snapshot.Fonts
 	}
 
 	return out, nil
@@ -354,11 +404,31 @@ func rebuildProjectSnapshot(state *projectState) error {
 	if len(metrics) == 0 {
 		metrics = json.RawMessage(`{}`)
 	}
+	metadata := state.Metadata
+	if len(metadata) == 0 {
+		metadata = json.RawMessage(`{}`)
+	}
+	metricsPresets, err := serializeEntityMap(state.MetricsPresets)
+	if err != nil {
+		return err
+	}
+	metadataPresets, err := serializeEntityMap(state.MetadataPresets)
+	if err != nil {
+		return err
+	}
+	fonts, err := serializeEntityMap(state.Fonts)
+	if err != nil {
+		return err
+	}
 
 	state.Doc.projectSnapshot = projectSnapshot{
-		Glyphs:   glyphs,
-		Syntaxes: syntaxes,
-		Metrics:  metrics,
+		Glyphs:          glyphs,
+		Syntaxes:        syntaxes,
+		Metrics:         metrics,
+		Metadata:        metadata,
+		MetricsPresets:  metricsPresets,
+		MetadataPresets: metadataPresets,
+		Fonts:           fonts,
 	}
 	return nil
 }
@@ -384,21 +454,55 @@ func newProjectStateFromDocument(doc projectDocument) (*projectState, error) {
 		return nil, err
 	}
 
+	metadata, err := normalizedRawObject(snapshot.Metadata, "metadata")
+	if err != nil {
+		return nil, err
+	}
+
+	metricsPresetsMap, err := parseEntityArrayByID(snapshot.MetricsPresets, "metricsPresets")
+	if err != nil {
+		return nil, err
+	}
+	metadataPresetsMap, err := parseEntityArrayByID(snapshot.MetadataPresets, "metadataPresets")
+	if err != nil {
+		return nil, err
+	}
+	fontsMap, err := parseEntityArrayByID(snapshot.Fonts, "fonts")
+	if err != nil {
+		return nil, err
+	}
+
 	state := &projectState{
-		Doc:            doc,
-		Glyphs:         glyphMap,
-		Syntaxes:       syntaxMap,
-		Metrics:        metrics,
-		GlyphVersions:  map[string]int64{},
-		SyntaxVersions: map[string]int64{},
-		MetricsVersion: 1,
-		Subs:           map[chan projectEvent]struct{}{},
+		Doc:                    doc,
+		Glyphs:                 glyphMap,
+		Syntaxes:               syntaxMap,
+		Metrics:                metrics,
+		Metadata:               metadata,
+		MetricsPresets:         metricsPresetsMap,
+		MetadataPresets:        metadataPresetsMap,
+		Fonts:                  fontsMap,
+		GlyphVersions:          map[string]int64{},
+		SyntaxVersions:         map[string]int64{},
+		MetricsVersion:         1,
+		MetricsPresetsVersion:  map[string]int64{},
+		MetadataPresetsVersion: map[string]int64{},
+		FontsVersion:           map[string]int64{},
+		Subs:                   map[chan projectEvent]struct{}{},
 	}
 	for id := range glyphMap {
 		state.GlyphVersions[id] = 1
 	}
 	for id := range syntaxMap {
 		state.SyntaxVersions[id] = 1
+	}
+	for id := range metricsPresetsMap {
+		state.MetricsPresetsVersion[id] = 1
+	}
+	for id := range metadataPresetsMap {
+		state.MetadataPresetsVersion[id] = 1
+	}
+	for id := range fontsMap {
+		state.FontsVersion[id] = 1
 	}
 	if err := rebuildProjectSnapshot(state); err != nil {
 		return nil, err
@@ -432,6 +536,34 @@ func (h *hub) projectSyntaxDir(projectID string) string {
 
 func (h *hub) projectMetricsFile(projectID string) string {
 	return filepath.Join(h.projectDir(projectID), "metrics.json")
+}
+
+func (h *hub) projectMetadataFile(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "metadata.json")
+}
+
+func (h *hub) projectMetricsPresetsDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "metrics")
+}
+
+func (h *hub) projectMetricsPresetsFile(projectID, filename string) string {
+	return filepath.Join(h.projectMetricsPresetsDir(projectID), filename)
+}
+
+func (h *hub) projectMetadataPresetsDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "metadata")
+}
+
+func (h *hub) projectMetadataPresetsFile(projectID, filename string) string {
+	return filepath.Join(h.projectMetadataPresetsDir(projectID), filename)
+}
+
+func (h *hub) projectFontsDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "fonts")
+}
+
+func (h *hub) projectFontsFile(projectID, filename string) string {
+	return filepath.Join(h.projectFontsDir(projectID), filename)
 }
 
 func (h *hub) projectGlyphFile(projectID, filename string) string {
@@ -670,6 +802,65 @@ func (h *hub) saveProjectStateToDisk(projectID string, state *projectState) erro
 		return err
 	}
 
+	metadataBytes, err := json.MarshalIndent(json.RawMessage(state.Metadata), "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writeJSONAtomic(h.projectMetadataFile(projectID), metadataBytes); err != nil {
+		return err
+	}
+
+	metricsPresetsFilesByID := entityFileNamesByID(state.MetricsPresets)
+	metricsPresetsExpectedFiles := make(map[string]struct{}, len(metricsPresetsFilesByID))
+	for id, raw := range state.MetricsPresets {
+		entryBytes, err := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err != nil {
+			return err
+		}
+		filename := metricsPresetsFilesByID[id]
+		metricsPresetsExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectMetricsPresetsFile(projectID, filename), entryBytes); err != nil {
+			return err
+		}
+	}
+	if err := removeStaleEntityFiles(h.projectMetricsPresetsDir(projectID), metricsPresetsExpectedFiles); err != nil {
+		return err
+	}
+
+	metadataPresetsFilesByID := entityFileNamesByID(state.MetadataPresets)
+	metadataPresetsExpectedFiles := make(map[string]struct{}, len(metadataPresetsFilesByID))
+	for id, raw := range state.MetadataPresets {
+		entryBytes, err := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err != nil {
+			return err
+		}
+		filename := metadataPresetsFilesByID[id]
+		metadataPresetsExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectMetadataPresetsFile(projectID, filename), entryBytes); err != nil {
+			return err
+		}
+	}
+	if err := removeStaleEntityFiles(h.projectMetadataPresetsDir(projectID), metadataPresetsExpectedFiles); err != nil {
+		return err
+	}
+
+	fontsFilesByID := entityFileNamesByID(state.Fonts)
+	fontsExpectedFiles := make(map[string]struct{}, len(fontsFilesByID))
+	for id, raw := range state.Fonts {
+		entryBytes, err := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err != nil {
+			return err
+		}
+		filename := fontsFilesByID[id]
+		fontsExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectFontsFile(projectID, filename), entryBytes); err != nil {
+			return err
+		}
+	}
+	if err := removeStaleEntityFiles(h.projectFontsDir(projectID), fontsExpectedFiles); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -698,31 +889,45 @@ func cloneInt64Map(input map[string]int64) map[string]int64 {
 
 func cloneProjectStateForPersist(state *projectState) *projectState {
 	return &projectState{
-		Doc:            state.Doc,
-		Glyphs:         cloneRawMap(state.Glyphs),
-		Syntaxes:       cloneRawMap(state.Syntaxes),
-		Metrics:        cloneRawMessage(state.Metrics),
-		GlyphVersions:  cloneInt64Map(state.GlyphVersions),
-		SyntaxVersions: cloneInt64Map(state.SyntaxVersions),
-		MetricsVersion: state.MetricsVersion,
-		Subs:           nil,
+		Doc:                    state.Doc,
+		Glyphs:                 cloneRawMap(state.Glyphs),
+		Syntaxes:               cloneRawMap(state.Syntaxes),
+		Metrics:                cloneRawMessage(state.Metrics),
+		Metadata:               cloneRawMessage(state.Metadata),
+		MetricsPresets:         cloneRawMap(state.MetricsPresets),
+		MetadataPresets:        cloneRawMap(state.MetadataPresets),
+		Fonts:                  cloneRawMap(state.Fonts),
+		GlyphVersions:          cloneInt64Map(state.GlyphVersions),
+		SyntaxVersions:         cloneInt64Map(state.SyntaxVersions),
+		MetricsVersion:         state.MetricsVersion,
+		MetricsPresetsVersion:  cloneInt64Map(state.MetricsPresetsVersion),
+		MetadataPresetsVersion: cloneInt64Map(state.MetadataPresetsVersion),
+		FontsVersion:           cloneInt64Map(state.FontsVersion),
+		Subs:                   nil,
 	}
 }
 
 func cloneProjectSnapshot(snapshot projectSnapshot) projectSnapshot {
 	return projectSnapshot{
-		Glyphs:   cloneRawMessage(snapshot.Glyphs),
-		Syntaxes: cloneRawMessage(snapshot.Syntaxes),
-		Metrics:  cloneRawMessage(snapshot.Metrics),
+		Glyphs:          cloneRawMessage(snapshot.Glyphs),
+		Syntaxes:        cloneRawMessage(snapshot.Syntaxes),
+		Metrics:         cloneRawMessage(snapshot.Metrics),
+		Metadata:        cloneRawMessage(snapshot.Metadata),
+		MetricsPresets:  cloneRawMessage(snapshot.MetricsPresets),
+		MetadataPresets: cloneRawMessage(snapshot.MetadataPresets),
+		Fonts:           cloneRawMessage(snapshot.Fonts),
 	}
 }
 
 func projectResponseFromState(state *projectState) projectResponse {
 	return projectResponse{
-		projectDocument: state.Doc,
-		GlyphVersions:   cloneInt64Map(state.GlyphVersions),
-		SyntaxVersions:  cloneInt64Map(state.SyntaxVersions),
-		MetricsVersion:  state.MetricsVersion,
+		projectDocument:         state.Doc,
+		GlyphVersions:           cloneInt64Map(state.GlyphVersions),
+		SyntaxVersions:          cloneInt64Map(state.SyntaxVersions),
+		MetricsVersion:          state.MetricsVersion,
+		MetricsPresetsVersions:  cloneInt64Map(state.MetricsPresetsVersion),
+		MetadataPresetsVersions: cloneInt64Map(state.MetadataPresetsVersion),
+		FontsVersions:           cloneInt64Map(state.FontsVersion),
 	}
 }
 
@@ -1165,13 +1370,20 @@ func newEmptyProjectState(projectID string) (*projectState, error) {
 			Version:   0,
 			UpdatedAt: now,
 		},
-		Glyphs:         map[string]json.RawMessage{},
-		Syntaxes:       map[string]json.RawMessage{},
-		Metrics:        json.RawMessage(`{}`),
-		GlyphVersions:  map[string]int64{},
-		SyntaxVersions: map[string]int64{},
-		MetricsVersion: 0,
-		Subs:           map[chan projectEvent]struct{}{},
+		Glyphs:                 map[string]json.RawMessage{},
+		Syntaxes:               map[string]json.RawMessage{},
+		Metrics:                json.RawMessage(`{}`),
+		Metadata:               json.RawMessage(`{}`),
+		MetricsPresets:         map[string]json.RawMessage{},
+		MetadataPresets:        map[string]json.RawMessage{},
+		Fonts:                  map[string]json.RawMessage{},
+		GlyphVersions:          map[string]int64{},
+		SyntaxVersions:         map[string]int64{},
+		MetricsVersion:         0,
+		MetricsPresetsVersion:  map[string]int64{},
+		MetadataPresetsVersion: map[string]int64{},
+		FontsVersion:           map[string]int64{},
+		Subs:                   map[chan projectEvent]struct{}{},
 	}
 	if err := rebuildProjectSnapshot(state); err != nil {
 		return nil, err

@@ -17,6 +17,10 @@ type FontProjectSnapshot = {
 	glyphs: Array<GlyphInput>;
 	syntaxes: Array<Syntax>;
 	metrics: FontMetrics;
+	metadata?: FontMetadata;
+	metricsPresets?: Array<MetricsPreset>;
+	metadataPresets?: Array<MetadataPreset>;
+	fonts?: Array<FontDefinition>;
 };
 
 type ProjectDocument = FontProjectSnapshot & {
@@ -29,6 +33,9 @@ type ProjectResponse = ProjectDocument & {
 	glyphVersions?: Record<string, number>;
 	syntaxVersions?: Record<string, number>;
 	metricsVersion?: number;
+	metricsPresetsVersions?: Record<string, number>;
+	metadataPresetsVersions?: Record<string, number>;
+	fontsVersions?: Record<string, number>;
 };
 
 type ProjectVersionResponse = {
