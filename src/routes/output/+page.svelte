@@ -223,7 +223,9 @@
 				{#if font}
 					<div class="flex min-h-[72vh] flex-col space-y-4">
 						<div class="flex flex-row flex-nowrap items-center space-x-8">
-							<h2 class="font-mono text-lg">{font.names.unicode?.fullName?.en ?? font.names.windows?.fullName?.en ?? ''}</h2>
+							<h2 class="font-mono text-lg">
+								{font.names.unicode?.fullName?.en ?? font.names.windows?.fullName?.en ?? ''}
+							</h2>
 							<Button
 								on:click={() => {
 									downloadFont(syntax);
