@@ -28,6 +28,13 @@ var version = "dev"
 
 const defaultRuntimeSyncAPIBase = "https://chirone.sssuper.io"
 
+func adminPassword() string {
+	if pw := os.Getenv("CHIRONE_ADMIN_PASSWORD"); pw != "" {
+		return pw
+	}
+	return "ch1r0ne"
+}
+
 //go:embed all:web/dist
 var embeddedAssets embed.FS
 
@@ -2315,6 +2322,72 @@ func (s *server) checkProjectPassword(r *http.Request, projectID string) bool {
 	return verifyPassword(password, doc.PasswordHash)
 }
 
+type createProjectRequest struct {
+	Project  string `json:"project"`
+	Password string `json:"password,omitempty"`
+}
+
+func (s *server) handleProjectCreate(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	adminPw := r.Header.Get("X-Chirone-Admin-Password")
+	if adminPw != adminPassword() {
+		http.Error(w, "admin password required", http.StatusForbidden)
+		return
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req createProjectRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	projectID := sanitizeProjectID(req.Project)
+	if projectID == "" || projectID == "default" {
+		http.Error(w, "invalid project name", http.StatusBadRequest)
+		return
+	}
+
+	// Check if project already exists
+	if _, exists, _ := s.hub.getProject(projectID); exists {
+		http.Error(w, "project already exists", http.StatusConflict)
+		return
+	}
+
+	state, err := newEmptyProjectState(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if req.Password != "" {
+		state.Doc.PasswordHash = hashPassword(req.Password)
+	}
+
+	if err := s.hub.saveProjectToDisk(state.Doc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := projectMeta{
+		Project:     state.Doc.Project,
+		Version:     state.Doc.Version,
+		UpdatedAt:   state.Doc.UpdatedAt,
+		HasPassword: state.Doc.PasswordHash != "",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func (s *server) handleProjectAuth(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
 	if r.Method == http.MethodOptions {
@@ -3042,6 +3115,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/project", s.handleProject)
 	mux.HandleFunc("/api/projects", s.handleProjectList)
+	mux.HandleFunc("/api/project/create", s.handleProjectCreate)
 	mux.HandleFunc("/api/project/auth", s.handleProjectAuth)
 	mux.HandleFunc("/api/project/password", s.handleProjectPassword)
 	mux.HandleFunc("/api/project-version", s.handleProjectVersion)

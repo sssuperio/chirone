@@ -25,6 +25,76 @@
 	import { currentSyntaxId } from '../syntax/+page.svelte';
 	import { onMount } from 'svelte';
 
+	let serverProjects: Array<{
+		project: string;
+		version: number;
+		hasPassword: boolean;
+	}> = [];
+	let projectsLoading = false;
+	let projectsError = '';
+	let showCreateProject = false;
+	let newProjectName = '';
+	let newProjectPassword = '';
+	let adminPasswordInput = '';
+	let creatingProject = false;
+
+	async function loadServerProjects() {
+		projectsLoading = true;
+		projectsError = '';
+		try {
+			const base = $collabConfig.base;
+			const res = await fetch(`${base}/api/projects`, { cache: 'no-store' });
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = await res.json();
+			serverProjects = data.projects ?? [];
+		} catch (e) {
+			projectsError = e instanceof Error ? e.message : String(e);
+		} finally {
+			projectsLoading = false;
+		}
+	}
+
+	async function switchToServerProject(id: string) {
+		setCollabProject(id);
+		loadServerProjects();
+	}
+
+	async function createServerProject() {
+		if (!newProjectName.trim()) return;
+		creatingProject = true;
+		try {
+			const base = $collabConfig.base;
+			const res = await fetch(`${base}/api/project/create`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Admin-Password': adminPasswordInput
+				},
+				body: JSON.stringify({
+					project: newProjectName.trim(),
+					password: newProjectPassword || undefined
+				})
+			});
+			if (!res.ok) {
+				const text = await res.text();
+				throw new Error(text || `HTTP ${res.status}`);
+			}
+			showCreateProject = false;
+			newProjectName = '';
+			newProjectPassword = '';
+			adminPasswordInput = '';
+			loadServerProjects();
+		} catch (e) {
+			projectsError = e instanceof Error ? e.message : String(e);
+		} finally {
+			creatingProject = false;
+		}
+	}
+
+	onMount(() => {
+		if ($collabConfig.enabled) loadServerProjects();
+	});
+
 	/**
 	 * Clear project
 	 */
@@ -343,6 +413,74 @@
 				<Button on:click={closeTooltipFail}>X</Button>
 			</div>
 		</Tooltip>
+	</div>
+
+	<div class="space-y-3 border-t border-slate-200 pt-6">
+		<div class="flex items-center gap-3">
+			<p class="font-mono">Progetti sul server</p>
+			<Button on:click={loadServerProjects}>
+				{projectsLoading ? 'Caricamento...' : 'Aggiorna'}
+			</Button>
+			<Button on:click={() => (showCreateProject = !showCreateProject)}>
+				{showCreateProject ? 'Annulla' : '+ Nuovo progetto'}
+			</Button>
+		</div>
+
+		{#if showCreateProject}
+			<div class="space-y-2 rounded bg-slate-50 p-3 font-mono">
+				<p class="text-xs text-slate-600">Crea un nuovo progetto (richiede password admin)</p>
+				<input
+					class="w-full border border-slate-400 px-3 py-2 text-sm"
+					placeholder="Nome progetto"
+					bind:value={newProjectName}
+				/>
+				<input
+					class="w-full border border-slate-400 px-3 py-2 text-sm"
+					type="password"
+					placeholder="Password admin"
+					bind:value={adminPasswordInput}
+				/>
+				<input
+					class="w-full border border-slate-400 px-3 py-2 text-sm"
+					type="password"
+					placeholder="Password progetto (opzionale)"
+					bind:value={newProjectPassword}
+				/>
+				<Button
+					disabled={!newProjectName.trim() || !adminPasswordInput || creatingProject}
+					on:click={createServerProject}
+				>
+					{creatingProject ? 'Creazione...' : 'Crea progetto'}
+				</Button>
+			</div>
+		{/if}
+
+		{#if projectsError}
+			<p class="font-mono text-sm text-red-600">{projectsError}</p>
+		{/if}
+
+		{#if serverProjects.length > 0}
+			<div class="max-h-48 space-y-1 overflow-y-auto">
+				{#each serverProjects as p (p.project)}
+					<button
+						class="flex w-full items-center justify-between rounded px-3 py-2 text-left font-mono text-sm hover:bg-slate-100 {$collabStatus.project ===
+						p.project
+							? 'bg-slate-200'
+							: ''}"
+						on:click={() => switchToServerProject(p.project)}
+					>
+						<span>{p.project}</span>
+						<span class="text-xs text-slate-400">
+							{#if p.hasPassword}🔒
+							{/if}
+							v{p.version}
+						</span>
+					</button>
+				{/each}
+			</div>
+		{:else if !projectsLoading}
+			<p class="font-mono text-sm text-slate-500">Nessun progetto trovato.</p>
+		{/if}
 	</div>
 </div>
 
