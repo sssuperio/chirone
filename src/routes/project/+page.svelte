@@ -385,10 +385,32 @@
 
 <div class="flex grow flex-col overflow-y-auto overflow-x-hidden">
 	<div class="space-y-8 p-8">
+		<!-- Server URL -->
+		<div class="space-y-2 rounded border border-slate-200 p-4">
+			<p class="font-mono text-sm font-semibold">Backend sync</p>
+			<p class="font-mono text-xs text-slate-600">
+				URL del server Chirone. Vuoto per disattivare, <code>/</code> per stesso binario.
+			</p>
+			<div class="flex items-center gap-2">
+				<input
+					class="w-full max-w-md border border-slate-400 px-3 py-2 font-mono text-sm"
+					placeholder="http://localhost:8090"
+					bind:value={collabServerInput}
+				/>
+				<Button disabled={!canApplyCollabServer} on:click={applyCollabServer}>Applica server</Button
+				>
+			</div>
+			{#if !isCollabServerValid}
+				<p class="font-mono text-xs text-rose-700">
+					URL non valido. Usa http://..., https://..., / oppure vuoto.
+				</p>
+			{/if}
+		</div>
+
 		{#if $collabConfig.enabled}
 			<div class="space-y-3 rounded border border-slate-200 p-4">
 				<div class="flex items-center gap-3">
-					<p class="font-mono text-sm font-semibold">Progetto sync</p>
+					<p class="font-mono text-sm font-semibold">Progetti sul server</p>
 					<span class="rounded bg-slate-200 px-2 py-0.5 font-mono text-xs">
 						{$collabStatus.project}
 					</span>
