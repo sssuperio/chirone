@@ -560,6 +560,7 @@
 	let activeGlyphEditorTab: GlyphEditorTab = 'visualDesign';
 	let isZenMode = false;
 	let isDesignFullscreen = false;
+	let showComponentsPanel = false;
 	let designWorkspaceElement: HTMLDivElement | undefined;
 	let floatingToolbarElement: HTMLDivElement | undefined;
 	let floatingToolbarX = 24;
@@ -1042,7 +1043,7 @@
 	<!-- Glyph area -->
 	<div
 		id="glyphs-main-area"
-		class={`flex grow flex-col items-stretch ${isZenMode ? 'space-y-2 p-2' : 'space-y-8 p-8'}`}
+		class={`flex grow flex-col items-stretch ${isZenMode ? 'space-y-2 p-2' : 'gap-4'}`}
 	>
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
@@ -1065,27 +1066,6 @@
 					1,
 					...glyphStructureLines.map((line) => line.length)
 				)}
-				{#if !isZenMode}
-					<div id="glyphs-header" class="flex shrink-0 items-center justify-between gap-4">
-						<div class="flex min-w-0 items-center gap-3">
-							<div class="flex items-center gap-2 text-lg">
-								<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
-									{designed ? '●' : '○'}
-								</span>
-								<p class="text-slate-700">{g.name}</p>
-							</div>
-							{#if glyphString}
-								<span class="text-slate-600">{glyphString}</span>
-							{/if}
-							{#if glyphHex}
-								<span class="text-sm text-slate-500">U+{glyphHex}</span>
-							{/if}
-							<span class="text-sm text-slate-500">[{glyphSet.label}]</span>
-						</div>
-						<DeleteButton on:delete={handleDelete} />
-					</div>
-					<hr />
-				{/if}
 				<div
 					bind:this={designWorkspaceElement}
 					class={`flex h-0 min-h-0 grow gap-4 ${isZenMode ? 'flex-row' : 'flex-col lg:flex-row'}`}
@@ -1110,22 +1090,38 @@
 								>
 									Visual design
 								</button>
-								<button
-									type="button"
-									class={`px-3 py-2 font-mono text-sm ${
-										activeGlyphEditorTab === 'glyphStructure'
-											? 'bg-slate-800 text-white'
-											: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-									}`}
-									aria-pressed={activeGlyphEditorTab === 'glyphStructure'}
-									on:click={() => {
-										activeGlyphEditorTab = 'glyphStructure';
-									}}
-								>
-									Glyph structure
-								</button>
+							<button
+								type="button"
+								class={`px-3 py-2 font-mono text-sm ${
+									activeGlyphEditorTab === 'glyphStructure'
+										? 'bg-slate-800 text-white'
+										: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+								}`}
+								aria-pressed={activeGlyphEditorTab === 'glyphStructure'}
+								on:click={() => {
+									activeGlyphEditorTab = 'glyphStructure';
+								}}
+							>
+								Glyph structure
+							</button>
+							<button
+								type="button"
+								id="glyphs-components-tab"
+								class={`px-3 py-2 font-mono text-sm ${
+									showComponentsPanel
+										? 'bg-slate-800 text-white'
+										: 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+								}`}
+								aria-pressed={showComponentsPanel}
+								on:click={() => {
+									showComponentsPanel = !showComponentsPanel;
+								}}
+							>
+								Components
+							</button>
 							</div>
 
+						{#if showComponentsPanel}
 							<div
 								id="glyphs-components-panel"
 								class="mb-2 space-y-2 border border-slate-300 bg-slate-50 p-2 font-mono text-xs"
@@ -1256,6 +1252,7 @@
 									</div>
 								{/if}
 							</div>
+					{/if}
 
 							<div id="glyphs-editor-content" class="flex h-0 min-h-0 grow flex-col gap-2">
 								<div
@@ -1337,6 +1334,24 @@
 						}`}
 					>
 						<p class="text-small mb-2 font-mono text-sm text-slate-900">Anteprima e metriche</p>
+						<div id="glyphs-header" class="flex shrink-0 items-center justify-between gap-4 p-2">
+							<div class="flex min-w-0 items-center gap-3">
+								<div class="flex items-center gap-2 text-lg">
+									<span class={designed ? 'text-emerald-500' : 'text-rose-500'}>
+										{designed ? '●' : '○'}
+									</span>
+									<p class="text-slate-700">{g.name}</p>
+								</div>
+								{#if glyphString}
+									<span class="text-slate-600">{glyphString}</span>
+								{/if}
+								{#if glyphHex}
+									<span class="text-sm text-slate-500">U+{glyphHex}</span>
+								{/if}
+								<span class="text-sm text-slate-500">[{glyphSet.label}]</span>
+							</div>
+							<DeleteButton on:delete={handleDelete} />
+						</div>
 						<div class="h-0 min-h-0 grow overflow-y-auto overflow-x-hidden">
 							<GlyphPreview
 								canvasHeight={previewCanvasHeight}

@@ -472,13 +472,14 @@
 	on:touchcancel={() => stopDrawing()}
 />
 
-<div class="flex h-full min-h-0 flex-col gap-3">
-	<div class="flex shrink-0 flex-wrap gap-2 bg-slate-100 p-2">
+<div id="glyph-painter-root" class="flex h-full min-h-0 flex-row gap-3">
+	<div id="glyph-painter-brushes" class="flex shrink-0 flex-col gap-2 bg-slate-100 p-2 overflow-y-auto">
 		{#if availableBrushes.length}
 			{#each availableBrushes as symbol (symbol)}
 				{@const brushRule = rulesBySymbol[symbol]}
 				<button
 					type="button"
+					id="glyph-painter-brush-{symbol}"
 					title={symbol}
 					class={`relative h-14 w-14 border font-mono text-sm ${
 						selectedBrush === symbol
@@ -508,7 +509,7 @@
 					{/if}
 				</button>
 			{/each}
-			<p class="font-mono text-xs text-slate-500">Alt o tasto destro: gomma</p>
+			<p id="glyph-painter-brush-hint" class="font-mono text-xs text-slate-500">Alt o tasto destro: gomma</p>
 		{:else}
 			<p class="font-mono text-xs text-slate-500">
 				Nessun simbolo disponibile dalla sintassi. Aggiungi simboli in Struttura glifo.
@@ -517,7 +518,7 @@
 	</div>
 
 	{#if showGrid}
-		<div class="h-0 min-h-0 grow overflow-auto bg-slate-100 p-2" style="touch-action: none;">
+		<div id="glyph-painter-grid" class="h-full min-w-0 grow overflow-auto bg-slate-100 p-2" style="touch-action: none;">
 			<div
 				class="grid w-max border border-slate-300 bg-white"
 				style={`grid-template-columns: repeat(${gridColumns}, 2rem);`}
