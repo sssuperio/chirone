@@ -287,6 +287,8 @@
 			canvas && font && text !== undefined && observedWidth > 0 && canvasHeight > 0
 		);
 		if (canRender) {
+			// Reference $metrics explicitly so Svelte tracks it as a reactive dependency
+			void $metrics;
 			render();
 		}
 	}

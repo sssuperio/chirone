@@ -1269,6 +1269,7 @@
 											resolvedBody={resolvedGlyphBody}
 											resolvedComponentSources={resolvedGlyphComponentSources}
 											brushes={brushSymbols}
+											minRows={$metrics.height}
 											{rulesBySymbol}
 											showGrid={activeGlyphEditorTab === 'visualDesign'}
 											on:change={scheduleTouchGlyphs}
