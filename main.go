@@ -3219,11 +3219,21 @@ func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
 }
 
 func serveCommand(args []string) error {
+	defaultAddr := ":8090"
+	if envAddr := os.Getenv("CHIRONE_ADDR"); envAddr != "" {
+		defaultAddr = envAddr
+	}
+
 	flags := flag.NewFlagSet("chirone", flag.ContinueOnError)
 	flags.Usage = printUsage
 
-	addr := flags.String("addr", ":8090", "address to listen on")
-	dataDir := flags.String("data-dir", "./data", "directory where project snapshots are stored")
+	addr := flags.String("addr", defaultAddr, "address to listen on")
+	defaultDataDir := "./data"
+	if envDataDir := os.Getenv("CHIRONE_DATA_DIR"); envDataDir != "" {
+		defaultDataDir = envDataDir
+	}
+
+	dataDir := flags.String("data-dir", defaultDataDir, "directory where project snapshots are stored")
 	allowOrigin := flags.String("allow-origin", "*", "CORS allowed origin (or * for all)")
 	uiDir := flags.String("ui-dir", "", "optional directory to serve static UI files from instead of embedded assets")
 
