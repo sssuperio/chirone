@@ -10,7 +10,7 @@
 	export let brushes: Array<string> = [];
 	export let rulesBySymbol: Record<string, Rule> = {};
 	export let minRows = 12;
-	export let minColumns = 12;
+	export let minColumns = 1;
 	export let showGrid = true;
 
 	const dispatch = createEventDispatcher<{ change: { structure: string } }>();
@@ -36,7 +36,31 @@
 		new Set(brushes.filter((symbol) => typeof symbol === 'string' && symbol.length === 1))
 	);
 
-	$: gridRows = Math.max(minRows, contentRows || 1, selectionAnchorRow + 1, selectionFocusRow + 1);
+	function isRowVoidOnly(rowStr: string | undefined): boolean {
+		if (!rowStr) return true;
+		for (const ch of rowStr) {
+			if (ch !== ' ') {
+				const rule = rulesBySymbol[ch];
+				if (!rule || rule.shape.kind !== ShapeKind.Void) return false;
+			}
+		}
+		return true;
+	}
+
+	$: effectiveContentRows = (() => {
+		if (contentRows <= minRows) return contentRows;
+		for (let r = minRows; r < contentRows; r++) {
+			if (!isRowVoidOnly(editableLines[r])) return contentRows;
+		}
+		return minRows;
+	})();
+
+	$: gridRows = Math.max(
+		minRows,
+		effectiveContentRows || 1,
+		selectionAnchorRow + 1,
+		selectionFocusRow + 1
+	);
 	$: gridColumns = Math.max(
 		minColumns,
 		contentColumns || 1,
