@@ -1043,7 +1043,7 @@
 	<!-- Glyph area -->
 	<div
 		id="glyphs-main-area"
-		class={`flex grow flex-col items-stretch ${isZenMode ? 'space-y-2 p-2' : 'gap-4'}`}
+		class={`flex grow flex-col items-stretch ${isZenMode ? 'space-y-2 p-2' : 'gap-4 p-3'}`}
 	>
 		{#each $glyphs as g}
 			{#if g.id == $selectedGlyph}
