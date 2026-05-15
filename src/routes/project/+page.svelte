@@ -24,11 +24,31 @@
 		detectArchiveFormat
 	} from '$lib/archive';
 	import type { MetadataPreset, FontDefinition } from '$lib/types';
-	import { collabConfig, collabStatus, setCollabProject } from '$lib/collab/client';
+	import {
+		collabConfig,
+		collabStatus,
+		setCollabProject,
+		setCollabServer,
+		canOverrideCollabServer
+	} from '$lib/collab/client';
 	import Button from '$lib/ui/button.svelte';
 	import Upload from '$lib/ui/upload.svelte';
 	import { Modal } from 'flowbite-svelte';
 	import { onMount } from 'svelte';
+
+	const collabServerPattern = /^(|\/|https?:\/\/.+)$/;
+	let collabServerInput = $collabConfig.server;
+
+	$: sanitizedCollabServerInput = collabServerInput.trim();
+	$: isCollabServerValid = collabServerPattern.test(sanitizedCollabServerInput);
+	$: canApplyCollabServer =
+		isCollabServerValid && sanitizedCollabServerInput !== $collabConfig.server;
+
+	function applyCollabServer() {
+		if (!canApplyCollabServer) return;
+		collabServerInput = setCollabServer(sanitizedCollabServerInput);
+		loadServerProjects();
+	}
 
 	let serverProjects: Array<{
 		project: string;
@@ -61,6 +81,16 @@
 
 	async function switchToServerProject(id: string) {
 		setCollabProject(id);
+		projectInfo.set({
+			...$projectInfo,
+			name: id,
+			updatedAt: new Date().toISOString()
+		});
+		// Update metadata family name to match project
+		const currentMeta = $fontMetadata;
+		if (!currentMeta.familyName || currentMeta.familyName === 'GTL') {
+			fontMetadata.set({ ...currentMeta, familyName: id });
+		}
 	}
 
 	async function createServerProject() {
@@ -111,9 +141,6 @@
 	let fontMetadataId = '';
 	let fontOutputName = '';
 	let fontEnabled = true;
-
-	// Project name editing
-	let projectNameInput = $projectInfo.name;
 
 	// Metadata editor for active preset
 	let editingMetadata = false;
@@ -196,17 +223,6 @@
 		const sourceGlyphs = font.id === $activeFontId ? $glyphs : loadGlyphsForFont(font.id);
 		if (sourceGlyphs.length > 0) {
 			saveGlyphsForFont(copy.id, JSON.parse(JSON.stringify(sourceGlyphs)));
-		}
-	}
-
-	function saveProjectName() {
-		const trimmed = projectNameInput.trim();
-		if (trimmed && trimmed !== $projectInfo.name) {
-			projectInfo.set({
-				...$projectInfo,
-				name: trimmed,
-				updatedAt: new Date().toISOString()
-			});
 		}
 	}
 
@@ -437,21 +453,17 @@
 			</div>
 		{/if}
 
-		<!-- Project Name -->
+		<!-- Project Info -->
 		<div class="space-y-2">
 			<p class="font-mono text-lg">Progetto</p>
-			<div class="flex items-center gap-2">
-				<input
-					class="w-full max-w-md border border-slate-400 px-3 py-2 font-mono"
-					bind:value={projectNameInput}
-					on:blur={saveProjectName}
-				/>
-				<Button on:click={saveProjectName}>Salva nome</Button>
+			<div class="font-mono text-sm">
+				<span class="text-slate-500">Nome: </span>
+				<span class="font-semibold"
+					>{$collabConfig.enabled ? $collabStatus.project : $projectInfo.name}</span
+				>
 			</div>
 			<div class="flex gap-4 font-mono text-xs text-slate-400">
 				<span>ID: {$projectInfo.id}</span>
-				<span>Creato: {new Date($projectInfo.createdAt).toLocaleDateString()}</span>
-				<span>Aggiornato: {new Date($projectInfo.updatedAt).toLocaleDateString()}</span>
 			</div>
 		</div>
 
