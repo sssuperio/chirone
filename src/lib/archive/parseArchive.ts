@@ -12,7 +12,7 @@ import { normalizeFontMetadata } from '$lib/GTL/metadata';
 
 interface ParsedArchive {
 	projectInfo: ProjectInfo;
-	glyphs: GlyphInput[];
+	perFontGlyphs: Map<string, GlyphInput[]>;
 	syntaxes: Syntax[];
 	metricsPresets: MetricsPreset[];
 	metadataPresets: MetadataPreset[];
@@ -134,15 +134,22 @@ export async function parseProjectArchive(file: File): Promise<ParsedArchive> {
 	const manifest = validateManifest(manifestParsed);
 	if (!manifest) throw new Error('Invalid chirone.json manifest');
 
-	// Parse glyphs
-	const glyphs: GlyphInput[] = [];
+	// Parse glyphs grouped by fontId
+	const perFontGlyphs = new Map<string, GlyphInput[]>();
 	const glyphPaths = manifest.paths?.glyphs ?? [];
 	for (const path of glyphPaths) {
 		const content = filesByPath.get(path);
 		if (!content) continue;
 		const parsed = parseJSONEntry(content);
 		const glyph = coerceGlyph(parsed);
-		if (glyph) glyphs.push(glyph);
+		if (!glyph) continue;
+		// Path format: glyphs/<fontId>/<glyphId>.json
+		const parts = path.split('/');
+		const fontId = parts.length >= 3 ? parts[1] : 'legacy';
+		if (!perFontGlyphs.has(fontId)) {
+			perFontGlyphs.set(fontId, []);
+		}
+		perFontGlyphs.get(fontId)!.push(glyph);
 	}
 
 	// Parse syntaxes
@@ -199,7 +206,7 @@ export async function parseProjectArchive(file: File): Promise<ParsedArchive> {
 			createdAt: now,
 			updatedAt: now
 		},
-		glyphs,
+		perFontGlyphs,
 		syntaxes,
 		metricsPresets: metricsPresetsList,
 		metadataPresets: metadataPresetsList,

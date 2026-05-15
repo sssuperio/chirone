@@ -39,7 +39,7 @@ function metadataToPreset(metadata: FontMetadata, id: string, name: string): Met
 
 interface ParsedLegacy {
 	projectInfo: ProjectInfo;
-	glyphs: GlyphInput[];
+	perFontGlyphs: Map<string, GlyphInput[]>;
 	syntaxes: Syntax[];
 	metricsPresets: MetricsPreset[];
 	metadataPresets: MetadataPreset[];
@@ -84,6 +84,9 @@ export function parseLegacyProjectFile(jsonText: string): ParsedLegacy {
 		enabled: true
 	};
 
+	const fontGlyphMap = new Map<string, GlyphInput[]>();
+	fontGlyphMap.set(fontDef.id, glyphs);
+
 	return {
 		projectInfo: {
 			id: nanoid(),
@@ -91,7 +94,7 @@ export function parseLegacyProjectFile(jsonText: string): ParsedLegacy {
 			createdAt: now,
 			updatedAt: now
 		},
-		glyphs,
+		perFontGlyphs: fontGlyphMap,
 		syntaxes,
 		metricsPresets: [metricsPreset],
 		metadataPresets: [metadataPreset],

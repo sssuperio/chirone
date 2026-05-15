@@ -23,7 +23,7 @@
 		parseLegacyProjectFile,
 		detectArchiveFormat
 	} from '$lib/archive';
-	import type { MetadataPreset, FontDefinition } from '$lib/types';
+	import type { MetadataPreset, FontDefinition, GlyphInput } from '$lib/types';
 	import {
 		collabConfig,
 		collabStatus,
@@ -265,8 +265,16 @@
 
 	async function exportProjectArchive() {
 		try {
+			const allFontGlyphs = new Map<string, GlyphInput[]>();
+			allFontGlyphs.set($activeFontId || 'default', $glyphs);
+			for (const font of $fontDefinitions) {
+				if (font.id === $activeFontId) continue;
+				const fontGlyphs = loadGlyphsForFont(font.id);
+				if (fontGlyphs.length > 0) allFontGlyphs.set(font.id, fontGlyphs);
+			}
+
 			const blob = await createProjectArchive(
-				$glyphs,
+				allFontGlyphs,
 				$syntaxes,
 				$metricsPresets,
 				$metadataPresets,
@@ -297,7 +305,7 @@
 			parsed = await parseProjectArchive(file);
 			summary = [
 				`Progetto: ${parsed.projectInfo.name}`,
-				`Glifi: ${parsed.glyphs.length}`,
+				`Glifi: ${Array.from(parsed.perFontGlyphs.values()).reduce((sum, g) => sum + g.length, 0)}`,
 				`Sintassi: ${parsed.syntaxes.length}`,
 				`Metrics presets: ${parsed.metricsPresets.length}`,
 				`Metadata presets: ${parsed.metadataPresets.length}`,
@@ -308,7 +316,7 @@
 			parsed = parseLegacyProjectFile(text);
 			summary = [
 				`Formato legacy GTL.json`,
-				`Glifi: ${parsed.glyphs.length}`,
+				`Glifi: ${Array.from(parsed.perFontGlyphs.values()).reduce((sum, g) => sum + g.length, 0)}`,
 				`Sintassi: ${parsed.syntaxes.length}`,
 				`Creato 1 metrics preset "Default"`,
 				`Creato 1 metadata preset "Default"`,
@@ -356,7 +364,7 @@
 		const parsed = parseLegacyProjectFile(event.detail.json);
 		importSummary = [
 			'Formato legacy GTL.json',
-			`Glifi: ${parsed.glyphs.length}`,
+			`Glifi: ${Array.from(parsed.perFontGlyphs.values()).reduce((sum, g) => sum + g.length, 0)}`,
 			`Sintassi: ${parsed.syntaxes.length}`
 		].join('\n');
 		importData = parsed;

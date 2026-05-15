@@ -75,7 +75,7 @@ describe('legacy import', () => {
 
 		const result = parseLegacyProjectFile(json);
 
-		expect(result.glyphs).toHaveLength(1);
+		expect(result.perFontGlyphs.get(result.fontDefinitions[0].id)).toHaveLength(1);
 		expect(result.syntaxes).toHaveLength(1);
 		expect(result.metricsPresets).toHaveLength(1);
 		expect(result.metricsPresets[0].UPM).toBe(500);
@@ -89,7 +89,7 @@ describe('legacy import', () => {
 	it('handles missing data gracefully', () => {
 		const json = JSON.stringify({});
 		const result = parseLegacyProjectFile(json);
-		expect(result.glyphs).toHaveLength(0);
+		expect(result.perFontGlyphs.size).toBe(1);
 		expect(result.syntaxes).toHaveLength(0);
 		expect(result.metricsPresets).toHaveLength(1);
 		expect(result.fontDefinitions).toHaveLength(1);
