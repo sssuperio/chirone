@@ -114,9 +114,17 @@
 				throw new Error(text || `HTTP ${res.status}`);
 			}
 			showCreateProject = false;
+			const createdName = newProjectName.trim();
 			newProjectName = '';
 			newProjectPassword = '';
 			adminPasswordInput = '';
+			// Switch to the newly created project
+			setCollabProject(createdName);
+			projectInfo.set({
+				...$projectInfo,
+				name: createdName,
+				updatedAt: new Date().toISOString()
+			});
 			loadServerProjects();
 		} catch (e) {
 			projectsError = e instanceof Error ? e.message : String(e);
