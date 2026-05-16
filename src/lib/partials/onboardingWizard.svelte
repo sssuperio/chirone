@@ -6,7 +6,7 @@
 	import { Modal } from 'flowbite-svelte';
 	import Button from '$lib/ui/button.svelte';
 	import RuleShapePreview from '$lib/components/glyph/ruleShapePreview.svelte';
-	import { ShapeKind, createEmptyRule, orientations } from '$lib/types';
+	import { ShapeKind, orientations } from '$lib/types';
 	import type { Syntax, Rule } from '$lib/types';
 	import { getGeneratableGlyphSetDefinitions, getGlyphNamesForSet } from '$lib/GTL/glyphSets';
 	import type { GlyphSetID } from '$lib/GTL/glyphSets';
@@ -47,15 +47,11 @@
 	}> = [];
 
 	function makeRule(kind: ShapeKind, symbol: string, orientation?: string): Rule {
-		const rule = createEmptyRule(kind);
-		rule.symbol = symbol;
-		if (orientation && rule.shape.props && 'orientation' in rule.shape.props) {
-			(rule.shape.props as Record<string, unknown>).orientation = {
-				kind: 'orientation',
-				value: { kind: 'fixed', data: orientation }
-			};
+		const props: Record<string, unknown> = {};
+		if (orientation) {
+			props.orientation = { kind: 'orientation', value: { kind: 'fixed', data: orientation } };
 		}
-		return rule;
+		return { symbol, shape: { kind, props: props as Rule['shape']['props'] } };
 	}
 
 	function initShapes() {
