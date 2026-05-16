@@ -6,7 +6,7 @@
 	import { Modal } from 'flowbite-svelte';
 	import Button from '$lib/ui/button.svelte';
 	import RuleShapePreview from '$lib/components/glyph/ruleShapePreview.svelte';
-	import { ShapeKind, createEmptyRule } from '$lib/types';
+	import { ShapeKind, createEmptyRule, orientations } from '$lib/types';
 	import type { Syntax, Rule } from '$lib/types';
 	import { getGeneratableGlyphSetDefinitions, getGlyphNamesForSet } from '$lib/GTL/glyphSets';
 	import type { GlyphSetID } from '$lib/GTL/glyphSets';
@@ -46,39 +46,93 @@
 		rule: Rule;
 	}> = [];
 
-	const defaultSymbols: Record<number, string> = {
-		[ShapeKind.Rectangle]: '#',
-		[ShapeKind.Circle]: 'o',
-		[ShapeKind.Ellipse]: '0',
-		[ShapeKind.Quarter]: 'q',
-		[ShapeKind.Triangle]: 't',
-		[ShapeKind.SVG]: 's'
-	};
+	function makeRule(kind: ShapeKind, symbol: string, orientation?: string): Rule {
+		const rule = createEmptyRule(kind);
+		rule.symbol = symbol;
+		if (orientation && rule.shape.props && 'orientation' in rule.shape.props) {
+			(rule.shape.props as Record<string, unknown>).orientation = {
+				kind: 'orientation',
+				value: { kind: 'fixed', data: orientation }
+			};
+		}
+		return rule;
+	}
 
 	function initShapes() {
-		const kinds = [
-			ShapeKind.Rectangle,
-			ShapeKind.Circle,
-			ShapeKind.Ellipse,
-			ShapeKind.Quarter,
-			ShapeKind.Triangle,
-			ShapeKind.SVG
+		shapeChoices = [
+			{
+				kind: ShapeKind.Void,
+				label: 'Vuoto (spazio)',
+				symbol: ' ',
+				enabled: true,
+				rule: { symbol: ' ', shape: { kind: ShapeKind.Void, props: {} } }
+			},
+			{
+				kind: ShapeKind.Rectangle,
+				label: 'Pieno',
+				symbol: '#',
+				enabled: true,
+				rule: makeRule(ShapeKind.Rectangle, '#')
+			}
 		];
-		const labels: Record<number, string> = {
-			[ShapeKind.Rectangle]: 'Pieno',
-			[ShapeKind.Circle]: 'Cerchio',
-			[ShapeKind.Ellipse]: 'Ellisse',
-			[ShapeKind.Quarter]: 'Quarto',
-			[ShapeKind.Triangle]: 'Triangolo',
-			[ShapeKind.SVG]: 'Curva'
+
+		const triSymbols: Record<string, string> = { NE: '^', NW: '<', SE: '>', SW: 'v' };
+		const triLabels: Record<string, string> = {
+			NE: 'Triangolo ↗',
+			NW: 'Triangolo ↖',
+			SE: 'Triangolo ↘',
+			SW: 'Triangolo ↙'
 		};
-		shapeChoices = kinds.map((kind) => ({
-			kind,
-			label: labels[kind] ?? 'Forma',
-			symbol: defaultSymbols[kind] ?? '?',
-			enabled: true,
-			rule: { ...createEmptyRule(kind), symbol: defaultSymbols[kind] ?? '?' }
-		}));
+		for (const o of orientations) {
+			shapeChoices.push({
+				kind: ShapeKind.Triangle,
+				label: triLabels[o] ?? `Triangolo ${o}`,
+				symbol: triSymbols[o] ?? '?',
+				enabled: false,
+				rule: makeRule(ShapeKind.Triangle, triSymbols[o] ?? '?', o)
+			});
+		}
+
+		const qtrSymbols: Record<string, string> = { NE: '1', NW: '2', SE: '3', SW: '4' };
+		const qtrLabels: Record<string, string> = {
+			NE: 'Quarto ↗',
+			NW: 'Quarto ↖',
+			SE: 'Quarto ↘',
+			SW: 'Quarto ↙'
+		};
+		for (const o of orientations) {
+			shapeChoices.push({
+				kind: ShapeKind.Quarter,
+				label: qtrLabels[o] ?? `Quarto ${o}`,
+				symbol: qtrSymbols[o] ?? '?',
+				enabled: false,
+				rule: makeRule(ShapeKind.Quarter, qtrSymbols[o] ?? '?', o)
+			});
+		}
+
+		shapeChoices.push(
+			{
+				kind: ShapeKind.Circle,
+				label: 'Cerchio',
+				symbol: 'o',
+				enabled: false,
+				rule: makeRule(ShapeKind.Circle, 'o')
+			},
+			{
+				kind: ShapeKind.Ellipse,
+				label: 'Ellisse',
+				symbol: '0',
+				enabled: false,
+				rule: makeRule(ShapeKind.Ellipse, '0')
+			},
+			{
+				kind: ShapeKind.SVG,
+				label: 'Curva',
+				symbol: 's',
+				enabled: false,
+				rule: makeRule(ShapeKind.SVG, 's')
+			}
+		);
 	}
 
 	function onSymbolChange(sc: { kind: number; symbol: string; rule: { symbol: string } }) {
@@ -136,9 +190,7 @@
 	}
 
 	function finish() {
-		const rules: Rule[] = [
-			{ symbol: ' ', shape: { kind: ShapeKind.Void, props: {} }, unused: false }
-		];
+		const rules: Rule[] = [];
 		for (const sc of shapeChoices) {
 			if (sc.enabled) rules.push({ ...sc.rule });
 		}
