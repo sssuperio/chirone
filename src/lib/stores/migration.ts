@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { metricsPresets, metadataPresets, fontDefinitions } from '$lib/stores';
+import { metricsPresets, metadataPresets, fontDefinitions, glyphs, saveGlyphsForFont } from '$lib/stores';
 import { get } from 'svelte/store';
 import type { FontMetrics } from '$lib/GTL/metrics';
 import { defaultFontMetrics } from '$lib/GTL/metrics';

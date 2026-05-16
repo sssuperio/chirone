@@ -21,7 +21,8 @@
 		fontMetadata,
 		glyphs,
 		activeFontId,
-		projectInfo
+		projectInfo,
+		saveGlyphsForFont
 	} from '$lib/stores';
 
 	export let open = false;
@@ -256,6 +257,7 @@
 			}
 		}
 		glyphs.set(newGlyphs);
+		saveGlyphsForFont(font.id, newGlyphs);
 		open = false;
 		goto(`${base}/glyphs`);
 	}
