@@ -447,3 +447,51 @@ mise exec -- task -a
 ```
 
 should work even if your shell PATH is not reloaded.
+
+---
+
+## Project Vision
+
+### Who this is for
+
+This is a collaborative typography design tool built for small-town artisans
+creating design systems for rural places. The target workflow is a
+**design marathon**: designers come together in one physical location for a
+short, intense session and collectively produce a complete typeface.
+
+### Core constraints
+
+- **Offline-first**: Internet connectivity is unreliable in rural areas.
+  The tool MUST work fully offline. The collaboration server is a
+  background sync layer, never a requirement for local work.
+- **Merge over overwrite**: Changes made offline by different people MUST
+  merge cleanly when they reconnect. Last-write-wins is acceptable only
+  when automatic merge is impossible, and the user MUST be warned.
+- **Single source of truth for mutations**: All project data mutations MUST
+  go through consolidated store-level functions (`src/lib/stores/index.ts`).
+  Direct store writes from UI components are forbidden. This prevents the
+  dual-storage sync bugs that happen when callers forget to populate both
+  the global key and the per-font key.
+- **Stale data is the common case**: Users do not clear their cache. The
+  wizard and project creation flows MUST explicitly clear old per-font
+  localStorage keys before writing new project data.
+- **UX simplicity**: The interface must be learnable in minutes by someone
+  who has never designed a font. Wizards over documentation. Single
+  creation flow (the onboarding wizard) over scattered configuration pages.
+
+### Architecture direction
+
+The codebase is moving toward a consolidated data layer:
+
+```
+UI components → store actions (single gate) → localStorage + collab server
+```
+
+Current state: UI components write directly to stores, which auto-sync to
+localStorage via `persisted()`, and the collab client subscribes to stores
+to push changes. This works but has too many independent mutation points
+(see `src/lib/stores/index.ts` for the consolidation surface).
+
+No component outside `src/lib/stores/` should call `glyphs.set()`,
+`syntaxes.set()`, `saveGlyphsForFont()`, or `loadGlyphsForFont()` directly.
+These are implementation details of the storage layer that callers get wrong.

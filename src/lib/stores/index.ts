@@ -113,3 +113,27 @@ export function switchToFont(newFontId: string, oldFontId: string): void {
 	glyphs.set(loaded);
 	activeFontId.set(newFontId);
 }
+
+export function clearStalePerFontGlyphs(): void {
+	if (typeof window === 'undefined') return;
+	try {
+		const keys = Object.keys(window.localStorage).filter((k) =>
+			k.startsWith(FONT_GLYPHS_PREFIX)
+		);
+		for (const key of keys) window.localStorage.removeItem(key);
+	} catch {
+		/* ignore */
+	}
+}
+
+export function resetProjectState(): void {
+	clearStalePerFontGlyphs();
+	syntaxes.set([]);
+	glyphs.set([]);
+	metrics.set(defaultMetrics);
+	fontMetadata.set(defaultMetadata);
+	activeFontId.set('');
+	fontDefinitions.set([]);
+	metricsPresets.set([]);
+	metadataPresets.set([]);
+}

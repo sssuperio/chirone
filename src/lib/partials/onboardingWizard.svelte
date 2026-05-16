@@ -22,7 +22,8 @@
 		glyphs,
 		activeFontId,
 		projectInfo,
-		saveGlyphsForFont
+		saveGlyphsForFont,
+		resetProjectState
 	} from '$lib/stores';
 
 	export let open = false;
@@ -201,6 +202,7 @@
 	}
 
 	function finish() {
+		resetProjectState();
 		const rules: Rule[] = [];
 		for (const sc of shapeChoices) {
 			if (sc.enabled) rules.push({ ...sc.rule });
