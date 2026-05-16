@@ -1,9 +1,19 @@
 import { get, writable } from 'svelte/store';
 import { env } from '$env/dynamic/public';
-import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
-import type { FontMetrics } from '$lib/GTL/metrics';
+import {
+	glyphs,
+	metrics,
+	selectedGlyph,
+	syntaxes,
+	activeFontId,
+	fontDefinitions,
+	metricsPresets,
+	metadataPresets,
+	fontMetadata
+} from '$lib/stores';
+import type { FontMetadata, FontMetrics } from '$lib/GTL/metrics';
 import { normalizeFontMetrics } from '$lib/GTL/metrics';
-import type { GlyphInput, Syntax } from '$lib/types';
+import type { FontDefinition, GlyphInput, MetadataPreset, MetricsPreset, Syntax } from '$lib/types';
 
 declare global {
 	interface Window {
@@ -17,6 +27,10 @@ type FontProjectSnapshot = {
 	glyphs: Array<GlyphInput>;
 	syntaxes: Array<Syntax>;
 	metrics: FontMetrics;
+	metadata?: FontMetadata;
+	metricsPresets?: Array<MetricsPreset>;
+	metadataPresets?: Array<MetadataPreset>;
+	fonts?: Array<FontDefinition>;
 };
 
 type ProjectDocument = FontProjectSnapshot & {
@@ -29,6 +43,9 @@ type ProjectResponse = ProjectDocument & {
 	glyphVersions?: Record<string, number>;
 	syntaxVersions?: Record<string, number>;
 	metricsVersion?: number;
+	metricsPresetsVersions?: Record<string, number>;
+	metadataPresetsVersions?: Record<string, number>;
+	fontsVersions?: Record<string, number>;
 };
 
 type ProjectVersionResponse = {
@@ -93,6 +110,7 @@ const legacyCollabProjectStorageKey = 'chirone-collab-project';
 let activeCollabServer = loadCollabServer(collabServerDefault);
 let activeCollabProject = loadCollabProject(collabProjectDefault);
 let runtimeStop: (() => void) | null = null;
+let activeSyncFullSnapshot: (() => Promise<void>) | null = null;
 
 const initialStatus = buildInitialStatus(activeCollabProject);
 
@@ -101,6 +119,11 @@ export const collabConfig = writable<CollabConfig>(currentCollabConfig());
 export const appVersion = writable<string>('loading');
 export const collabServerSHA = writable<string>(currentCollabConfig().enabled ? 'loading' : 'n/a');
 export const canOverrideCollabServer = collabServerOverrideAllowed;
+
+export function syncProjectNow(): Promise<void> {
+	if (activeSyncFullSnapshot) return activeSyncFullSnapshot();
+	return Promise.resolve();
+}
 
 let singletonStop: (() => void) | null = null;
 
@@ -274,6 +297,41 @@ function coerceMetrics(input: unknown): FontMetrics | null {
 	} catch {
 		return null;
 	}
+	}
+
+function coerceFontMetadata(input: unknown): FontMetadata | null {
+	if (!isObjectRecord(input)) return null;
+	return input as FontMetadata;
+}
+
+function coerceMetadataPresets(input: unknown): Array<MetadataPreset> | undefined {
+	if (!Array.isArray(input)) return undefined;
+	const out: Array<MetadataPreset> = [];
+	for (const item of input) {
+		if (!isObjectRecord(item)) return undefined;
+		out.push(item as MetadataPreset);
+	}
+	return out;
+}
+
+function coerceMetricsPresets(input: unknown): Array<MetricsPreset> | undefined {
+	if (!Array.isArray(input)) return undefined;
+	const out: Array<MetricsPreset> = [];
+	for (const item of input) {
+		if (!isObjectRecord(item)) return undefined;
+		out.push(item as MetricsPreset);
+	}
+	return out;
+}
+
+function coerceFontDefinitions(input: unknown): Array<FontDefinition> | undefined {
+	if (!Array.isArray(input)) return undefined;
+	const out: Array<FontDefinition> = [];
+	for (const item of input) {
+		if (!isObjectRecord(item) || typeof item.id !== 'string') return undefined;
+		out.push(item as FontDefinition);
+	}
+	return out;
 }
 
 function coerceGlyph(input: unknown): GlyphInput | null {
@@ -315,10 +373,19 @@ function coerceSnapshot(input: unknown): FontProjectSnapshot | null {
 		parsedSyntaxes.push(syntax);
 	}
 
+	const metadata = coerceFontMetadata(input.metadata);
+	const parsedMetadataPresets = coerceMetadataPresets(input.metadataPresets);
+	const parsedMetricsPresets = coerceMetricsPresets(input.metricsPresets);
+	const parsedFonts = coerceFontDefinitions(input.fonts);
+
 	return {
 		glyphs: parsedGlyphs,
 		syntaxes: parsedSyntaxes,
-		metrics: metricMap
+		metrics: metricMap,
+		metadata: metadata ?? undefined,
+		metadataPresets: parsedMetadataPresets,
+		metricsPresets: parsedMetricsPresets,
+		fonts: parsedFonts
 	};
 }
 
@@ -524,6 +591,15 @@ function stopRuntime() {
 	stop();
 }
 
+function getStoredPassword(projectID: string): string {
+	if (typeof window === 'undefined') return '';
+	try {
+		return window.localStorage.getItem(`chirone-pwd-${projectID}`) ?? '';
+	} catch {
+		return '';
+	}
+}
+
 function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const clientID = buildClientID();
 	const projectURL = `${serverBase}/api/project?project=${encodeURIComponent(projectID)}`;
@@ -532,6 +608,8 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	const syntaxURL = `${serverBase}/api/syntax?project=${encodeURIComponent(projectID)}`;
 	const metricsURL = `${serverBase}/api/metrics?project=${encodeURIComponent(projectID)}`;
 	const eventsURL = `${serverBase}/api/events?project=${encodeURIComponent(projectID)}&stream=${encodeURIComponent(clientID)}`;
+	const metadataURL = `${serverBase}/api/metadata?project=${encodeURIComponent(projectID)}`;
+	const fontURL = `${serverBase}/api/font?project=${encodeURIComponent(projectID)}`;
 	const shaURL = `${serverBase}/api/version`;
 
 	let stopped = false;
@@ -551,10 +629,14 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	let glyphVersions = new Map<string, number>();
 	let syntaxVersions = new Map<string, number>();
 	let metricsVersion = 0;
+	let metadataVersion = 0;
+	let fontVersions = new Map<string, number>();
 
 	let knownGlyphHashes = new Map<string, string>();
 	let knownSyntaxHashes = new Map<string, string>();
 	let knownMetricsHash = '';
+	let knownMetadataHash = '';
+	let knownFontHashes = new Map<string, string>();
 
 	const pendingGlyphUpserts = new Map<string, GlyphInput>();
 	const pendingGlyphDeletes = new Set<string>();
@@ -595,6 +677,10 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			get(syntaxes).map((syntax) => [syntax.id, stableStringify(syntax)])
 		);
 		knownMetricsHash = stableStringify(get(metrics));
+		knownMetadataHash = stableStringify(get(fontMetadata));
+		knownFontHashes = new Map(
+			get(fontDefinitions).map((font) => [font.id, stableStringify(font)])
+		);
 	};
 
 	const applyVersionMapsFromSnapshot = (
@@ -631,6 +717,15 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		glyphs.set(snapshot.glyphs);
 		syntaxes.set(snapshot.syntaxes);
 		metrics.set(snapshot.metrics);
+		if (snapshot.metadata) fontMetadata.set(snapshot.metadata);
+		if (snapshot.metadataPresets) metadataPresets.set(snapshot.metadataPresets);
+		if (snapshot.metricsPresets) metricsPresets.set(snapshot.metricsPresets);
+		if (snapshot.fonts) {
+			fontDefinitions.set(snapshot.fonts);
+			if (!get(activeFontId) && snapshot.fonts.length > 0) {
+				activeFontId.set(snapshot.fonts[0].id);
+			}
+		}
 		ensureSelectedGlyph(snapshot.glyphs);
 		isApplyingRemote = false;
 
@@ -741,6 +836,65 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		refreshLocalHashes();
 	};
 
+	const applyRemoteMetadataUpdate = (
+		nextMeta: FontMetadata,
+		entityVersion: number,
+		globalVersion: number
+	) => {
+		isApplyingRemote = true;
+		fontMetadata.set(nextMeta);
+		isApplyingRemote = false;
+
+		metadataVersion = entityVersion;
+		lastVersion = Math.max(lastVersion, globalVersion);
+		refreshLocalHashes();
+	};
+
+	const applyRemoteFontUpsert = (
+		font: FontDefinition,
+		entityVersion: number,
+		globalVersion: number
+	) => {
+		const current = get(fontDefinitions);
+		const index = current.findIndex((item) => item.id === font.id);
+		const next = [...current];
+		if (index >= 0) {
+			next[index] = font;
+		} else {
+			next.push(font);
+		}
+		isApplyingRemote = true;
+		fontDefinitions.set(next);
+		if (!get(activeFontId) && next.length > 0) {
+			activeFontId.set(next[0].id);
+		}
+		isApplyingRemote = false;
+
+		fontVersions.set(font.id, entityVersion);
+		lastVersion = Math.max(lastVersion, globalVersion);
+		refreshLocalHashes();
+	};
+
+	const applyRemoteFontDelete = (
+		fontID: string,
+		entityVersion: number,
+		globalVersion: number
+	) => {
+		isApplyingRemote = true;
+		fontDefinitions.set(get(fontDefinitions).filter((item) => item.id !== fontID));
+		isApplyingRemote = false;
+
+		fontVersions.delete(fontID);
+		lastVersion = Math.max(lastVersion, globalVersion);
+		refreshLocalHashes();
+	};
+
+	function coerceSingleFont(input: unknown): FontDefinition | null {
+		if (!isObjectRecord(input)) return null;
+		if (typeof input.id !== 'string' || !input.id.trim()) return null;
+		return input as FontDefinition;
+	}
+
 	const scheduleReconnect = () => {
 		if (stopped || reconnectTimer) return;
 		const delay = Math.min(10000, 500 * 2 ** reconnectAttempts);
@@ -751,7 +905,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}, delay);
 	};
 
-	const schedulePush = (delay = 200) => {
+	const schedulePush = (delay = 500) => {
 		if (stopped || !localSyncReady || isApplyingRemote) return;
 		if (pushTimer) clearTimeout(pushTimer);
 		pushTimer = setTimeout(() => {
@@ -778,7 +932,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 		knownGlyphHashes = nextHashes;
 		if (!isApplyingRemote) {
-			schedulePush(180);
+			schedulePush(400);
 		}
 	};
 
@@ -800,7 +954,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 		knownSyntaxHashes = nextHashes;
 		if (!isApplyingRemote) {
-			schedulePush(180);
+			schedulePush(400);
 		}
 	};
 
@@ -808,9 +962,117 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		const hash = stableStringify(currentMetrics);
 		if (knownMetricsHash !== hash && !isApplyingRemote) {
 			pendingMetrics = cloneMetrics(currentMetrics);
-			schedulePush(180);
+			schedulePush(400);
 		}
 		knownMetricsHash = hash;
+	};
+
+	const syncLocalMetadata = (currentMeta: FontMetadata) => {
+		const hash = stableStringify(currentMeta);
+		if (knownMetadataHash !== hash && !isApplyingRemote) {
+			void pushMetadataUpdate(currentMeta);
+		}
+		knownMetadataHash = hash;
+	};
+
+	const syncLocalFonts = (currentFonts: Array<FontDefinition>) => {
+		const nextHashes = new Map<string, string>();
+		for (const font of currentFonts) {
+			const hash = stableStringify(font);
+			nextHashes.set(font.id, hash);
+			if (knownFontHashes.get(font.id) !== hash && !isApplyingRemote) {
+				void pushFontUpsert(font);
+			}
+		}
+		for (const fontID of knownFontHashes.keys()) {
+			if (!nextHashes.has(fontID) && !isApplyingRemote) {
+				void pushFontDelete(fontID);
+			}
+		}
+		knownFontHashes = nextHashes;
+	};
+
+	const pushMetadataUpdate = async (meta: FontMetadata) => {
+		try {
+			const body = JSON.stringify({
+				clientId: clientID,
+				baseVersion: metadataVersion,
+				metadata: meta
+			});
+			const response = await fetch(metadataURL, {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Password': getStoredPassword(projectID)
+				},
+				body
+			});
+			if (response.ok) {
+				const p = (await response.json()) as unknown;
+				if (isObjectRecord(p) && typeof p.version === 'number') {
+					metadataVersion = Math.max(metadataVersion, p.version);
+				}
+			} else if (response.status === 409) {
+				void reloadProjectSnapshot('metadata conflict');
+			}
+		} catch {
+			/* retry on next change */
+		}
+	};
+
+	const pushFontUpsert = async (font: FontDefinition) => {
+		try {
+			const currentVersion = fontVersions.get(font.id) ?? 0;
+			const body = JSON.stringify({
+				clientId: clientID,
+				baseVersion: currentVersion,
+				font: font
+			});
+			const response = await fetch(fontURL, {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Password': getStoredPassword(projectID)
+				},
+				body
+			});
+			if (response.ok) {
+				const p = (await response.json()) as unknown;
+				if (isObjectRecord(p) && typeof p.version === 'number') {
+					fontVersions.set(font.id, Math.max(currentVersion, p.version));
+				}
+			} else if (response.status === 409) {
+				void reloadProjectSnapshot('font upsert conflict');
+			}
+		} catch {
+			/* retry on next change */
+		}
+	};
+
+	const pushFontDelete = async (fontID: string) => {
+		try {
+			const currentVersion = fontVersions.get(fontID) ?? 0;
+			const body = JSON.stringify({
+				clientId: clientID,
+				baseVersion: currentVersion,
+				id: fontID
+			});
+			const response = await fetch(fontURL, {
+				method: 'DELETE',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Password': getStoredPassword(projectID)
+				},
+				body
+			});
+			if (response.ok) {
+				fontVersions.delete(fontID);
+			} else if (response.status === 409) {
+				void reloadProjectSnapshot('font delete conflict');
+			}
+		} catch {
+			/* retry on next change */
+		}
 	};
 
 	const queueFullLocalState = () => {
@@ -828,6 +1090,95 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 
 		pendingMetrics = cloneMetrics(get(metrics));
 		schedulePush(0);
+	};
+
+	const pushFullSnapshot = async () => {
+		if (stopped || !localSyncReady) return;
+		// Clear pending individual pushes — the full snapshot covers everything
+		pendingGlyphUpserts.clear();
+		pendingGlyphDeletes.clear();
+		pendingSyntaxUpserts.clear();
+		pendingSyntaxDeletes.clear();
+		pendingMetrics = null;
+		try {
+			const body = JSON.stringify({
+				clientId: clientID,
+				baseVersion: lastVersion,
+				glyphs: JSON.parse(JSON.stringify(get(glyphs))),
+				syntaxes: JSON.parse(JSON.stringify(get(syntaxes))),
+				metrics: JSON.parse(JSON.stringify(get(metrics))),
+				metadata: JSON.parse(JSON.stringify(get(fontMetadata))),
+				metricsPresets: JSON.parse(JSON.stringify(get(metricsPresets))),
+				metadataPresets: JSON.parse(JSON.stringify(get(metadataPresets))),
+				fonts: JSON.parse(JSON.stringify(get(fontDefinitions)))
+			});
+			const response = await fetch(projectURL, {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Password': getStoredPassword(projectID)
+				},
+				body
+			});
+			if (response.status === 409) {
+				const ok = await reloadProjectSnapshot('full push conflict');
+				if (ok) {
+					// Retry with updated version from reload
+					const retryBody = JSON.stringify({
+						clientId: clientID,
+						baseVersion: lastVersion,
+						glyphs: JSON.parse(JSON.stringify(get(glyphs))),
+						syntaxes: JSON.parse(JSON.stringify(get(syntaxes))),
+						metrics: JSON.parse(JSON.stringify(get(metrics))),
+						metadata: JSON.parse(JSON.stringify(get(fontMetadata))),
+						metricsPresets: JSON.parse(JSON.stringify(get(metricsPresets))),
+						metadataPresets: JSON.parse(JSON.stringify(get(metadataPresets))),
+						fonts: JSON.parse(JSON.stringify(get(fontDefinitions)))
+					});
+					const retryResp = await fetch(projectURL, {
+						method: 'PUT',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Chirone-Password': getStoredPassword(projectID)
+						},
+						body: retryBody
+					});
+					if (retryResp.ok) {
+						const p = (await retryResp.json()) as unknown;
+						const d = coerceProjectResponse(p);
+						if (d) lastVersion = Math.max(lastVersion, d.version);
+					}
+				}
+				return;
+			}
+			if (!response.ok) return;
+			const payload = (await response.json()) as unknown;
+			const doc = coerceProjectResponse(payload);
+			if (doc) {
+				lastVersion = Math.max(lastVersion, doc.version);
+				if (doc.glyphVersions) {
+					for (const [id, v] of Object.entries(doc.glyphVersions)) {
+						glyphVersions.set(id, Math.max(glyphVersions.get(id) ?? 0, v));
+					}
+				}
+				if (doc.syntaxVersions) {
+					for (const [id, v] of Object.entries(doc.syntaxVersions)) {
+						syntaxVersions.set(id, Math.max(syntaxVersions.get(id) ?? 0, v));
+					}
+				}
+				if (doc.metricsVersion) {
+					metricsVersion = Math.max(metricsVersion, doc.metricsVersion);
+				}
+			}
+		} catch {
+			// ignore push errors
+		}
+	};
+
+	// Exposed via syncProjectNow() so callers can deterministically
+	// push a full snapshot and await server acknowledgement.
+	activeSyncFullSnapshot = async () => {
+		await pushFullSnapshot();
 	};
 
 	type PendingOperation =
@@ -947,6 +1298,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 						body: JSON.stringify({
 							clientId: clientID,
 							baseVersion,
+							fontId: get(activeFontId),
 							glyph: op.glyph
 						})
 					});
@@ -960,6 +1312,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 						body: JSON.stringify({
 							clientId: clientID,
 							baseVersion,
+							fontId: get(activeFontId),
 							id: op.id
 						})
 					});
@@ -986,6 +1339,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 						body: JSON.stringify({
 							clientId: clientID,
 							baseVersion,
+							fontId: get(activeFontId),
 							id: op.id
 						})
 					});
@@ -1216,6 +1570,19 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 					const nextMetrics = coerceMetrics(update.payload);
 					if (!nextMetrics) return;
 					applyRemoteMetricsUpdate(nextMetrics, update.entityVersion, update.version);
+				} else if (update.entity === 'metadata') {
+					const nextMeta = coerceFontMetadata(update.payload);
+					if (!nextMeta) return;
+					applyRemoteMetadataUpdate(nextMeta, update.entityVersion, update.version);
+				} else if (update.entity === 'font') {
+					if (!update.entityId) return;
+					if (update.entityDeleted) {
+						applyRemoteFontDelete(update.entityId, update.entityVersion, update.version);
+					} else {
+						const font = coerceSingleFont(update.payload);
+						if (!font) return;
+						applyRemoteFontUpsert(font, update.entityVersion, update.version);
+					}
 				}
 
 				setStatus('connected', `Received update (v${lastVersion})`);
@@ -1227,6 +1594,9 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		handleEntityEvent('syntax_upsert');
 		handleEntityEvent('syntax_delete');
 		handleEntityEvent('metrics_update');
+		handleEntityEvent('metadata_update');
+		handleEntityEvent('font_upsert');
+		handleEntityEvent('font_delete');
 
 		es.onerror = () => {
 			if (stopped) return;
@@ -1247,6 +1617,19 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		try {
 			const response = await fetch(projectURL, { cache: 'no-store' });
 			if (response.status === 404) {
+				// Project deleted on server — clear client state
+				glyphs.set([]);
+				syntaxes.set([]);
+				if (typeof window !== 'undefined') {
+					try {
+						const keys = Object.keys(window.localStorage).filter((k) =>
+							k.startsWith('chirone-glyphs-')
+						);
+						for (const key of keys) window.localStorage.removeItem(key);
+					} catch {
+						/* ignore */
+					}
+				}
 				loadedRemote = false;
 			} else if (!response.ok) {
 				throw new Error(`load failed: ${response.status}`);
@@ -1268,6 +1651,20 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		unsubs.push(glyphs.subscribe(syncLocalGlyphQueue));
 		unsubs.push(syntaxes.subscribe(syncLocalSyntaxQueue));
 		unsubs.push(metrics.subscribe(syncLocalMetricsQueue));
+		unsubs.push(fontMetadata.subscribe(syncLocalMetadata));
+		unsubs.push(fontDefinitions.subscribe(syncLocalFonts));
+
+		// Push full snapshot only for presets (metadata and fonts use per-entity API)
+		let fullPushTimer: ReturnType<typeof setTimeout> | undefined;
+		const debouncedFullPush = () => {
+			if (fullPushTimer) clearTimeout(fullPushTimer);
+			fullPushTimer = setTimeout(() => {
+				void pushFullSnapshot();
+			}, 300);
+		};
+		unsubs.push(metricsPresets.subscribe(debouncedFullPush));
+		unsubs.push(metadataPresets.subscribe(debouncedFullPush));
+
 		localSyncReady = true;
 
 		if (!loadedRemote) {
@@ -1286,6 +1683,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	return () => {
 		stopped = true;
 		localSyncReady = false;
+			activeSyncFullSnapshot = null;
 		for (const unsub of unsubs) {
 			unsub();
 		}

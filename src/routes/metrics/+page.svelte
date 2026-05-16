@@ -1,10 +1,58 @@
 <script lang="ts">
-	import { metrics } from '$lib/stores';
+	import { metrics, metricsPresets, activeFontId, fontDefinitions } from '$lib/stores';
 	import { areMetricsEqual, estimateVerticalMetrics, normalizeFontMetrics } from '$lib/GTL/metrics';
 
 	import InputNumber from '$lib/ui/inputNumber.svelte';
 	import Label from '$lib/ui/label.svelte';
 	import Button from '$lib/ui/button.svelte';
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: activeMetricsPreset = $metricsPresets.find((m) => m.id === activeFont?.metricsId);
+
+	$: {
+		const currentPresets = $metricsPresets;
+		if (currentPresets.length > 0) {
+			const preset = currentPresets[0];
+			const normalizedPresetMetrics = {
+				UPM: preset.UPM,
+				height: preset.height,
+				baseline: preset.baseline,
+				descender: preset.descender,
+				ascender: preset.ascender,
+				capHeight: preset.capHeight,
+				xHeight: preset.xHeight
+			};
+			if (!areMetricsEqual($metrics, normalizedPresetMetrics)) {
+				$metrics = normalizedPresetMetrics;
+			}
+		}
+	}
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: activeMetricsPreset = $metricsPresets.find((m) => m.id === activeFont?.metricsId);
+
+	$: {
+		const currentPresets = $metricsPresets;
+		const normalized = normalizeFontMetrics($metrics);
+		if (currentPresets.length > 0) {
+			const preset = currentPresets[0];
+			if (
+				preset.UPM !== normalized.UPM ||
+				preset.height !== normalized.height ||
+				preset.baseline !== normalized.baseline ||
+				preset.descender !== normalized.descender ||
+				preset.ascender !== normalized.ascender ||
+				preset.capHeight !== normalized.capHeight ||
+				preset.xHeight !== normalized.xHeight
+			) {
+				currentPresets[0] = { ...preset, ...normalized };
+				metricsPresets.set([...currentPresets]);
+			}
+		} else {
+			currentPresets.push({ id: 'default', name: 'Default', ...normalized });
+			metricsPresets.set([...currentPresets]);
+		}
+	}
 
 	let lastHeight = 0;
 	let lastDescender = 0;
@@ -40,6 +88,15 @@
 </script>
 
 <div class="space-y-8 p-8">
+	{#if activeFont}
+		<div class="rounded bg-slate-100 px-3 py-2 font-mono text-xs">
+			<span class="text-slate-500">Font: </span>
+			<span class="font-semibold">{activeFont.name}</span>
+			{#if activeMetricsPreset}
+				<span class="text-slate-400"> &middot; Metrics: {activeMetricsPreset.name}</span>
+			{/if}
+		</div>
+	{/if}
 	<div class="space-y-2">
 		<p class="font-mono text-sm text-slate-700">
 			Metriche discrete su celle. `height` e `descender` aggiornano automaticamente

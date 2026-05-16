@@ -4,3 +4,4 @@ export * from './shapes';
 export * from './utils';
 export * from './syntax';
 export * from './glyph';
+export * from './project';

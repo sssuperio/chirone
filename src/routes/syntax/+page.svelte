@@ -6,8 +6,16 @@
 <script lang="ts">
 	import { createEmptySyntax, createEmptyRule, ShapeKind, type GlyphInput } from '$lib/types';
 	import type { Syntax } from '$lib/types';
-	import { syntaxes, glyphs } from '$lib/stores';
+	import { syntaxes, glyphs, activeFontId, fontDefinitions } from '$lib/stores';
 	import { nanoid } from 'nanoid';
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: {
+		if (activeFont?.syntaxId && $currentSyntaxId !== activeFont.syntaxId) {
+			$currentSyntaxId = activeFont.syntaxId;
+		}
+	}
+
 	import {
 		getUniqueSymbolsFromGlyphs,
 		parseGlyphStructure,
@@ -173,6 +181,12 @@
 	<!-- sidebar -->
 	<Sidebar>
 		<svelte:fragment slot="topArea">
+			{#if activeFont}
+				<div class="rounded bg-slate-100 px-2 py-1 font-mono text-xs">
+					<div class="text-slate-500">Font</div>
+					<div class="font-semibold">{activeFont.name}</div>
+				</div>
+			{/if}
 			<Button on:click={addSyntaxBtn}>+ Aggiungi stile</Button>
 		</svelte:fragment>
 		<svelte:fragment slot="listTitle">Lista stili</svelte:fragment>

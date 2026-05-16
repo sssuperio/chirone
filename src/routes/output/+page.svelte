@@ -1,6 +1,14 @@
 <script lang="ts">
-	import { glyphs, syntaxes, metrics, fontMetadata } from '$lib/stores';
-	import type { Syntax } from '$lib/types';
+	import {
+		glyphs,
+		syntaxes,
+		metrics,
+		fontMetadata,
+		fontDefinitions,
+		metricsPresets,
+		metadataPresets
+	} from '$lib/stores';
+	import type { Syntax, FontDefinition, MetricsPreset, MetadataPreset } from '$lib/types';
 
 	import { generateFont } from '$lib/GTL/createFont';
 	import { parsePreviewText } from '$lib/GTL/previewText';
@@ -11,6 +19,28 @@
 	import Label from '$lib/ui/label.svelte';
 	import { previewText } from '$lib/stores';
 	import Button from '$lib/ui/button.svelte';
+
+	function resolveSyntax(id: string): Syntax | null {
+		return $syntaxes.find((s) => s.id === id) ?? null;
+	}
+
+	function resolveMetrics(id: string): MetricsPreset | null {
+		return $metricsPresets.find((m) => m.id === id) ?? null;
+	}
+
+	function resolveMetadata(id: string): MetadataPreset | null {
+		return $metadataPresets.find((m) => m.id === id) ?? null;
+	}
+
+	$: enabledFonts = $fontDefinitions.filter((f) => f.enabled);
+
+	let selectedFontId = '';
+	$: {
+		if (!selectedFontId && enabledFonts.length > 0) {
+			selectedFontId = enabledFonts[0].id;
+		}
+	}
+	$: displayedFonts = enabledFonts.filter((f) => !selectedFontId || f.id === selectedFontId);
 
 	type PreviewPreset = {
 		id: string;
@@ -136,12 +166,26 @@
 		return cleaned.replace(/[^a-zA-Z0-9._-]/g, '');
 	}
 
-	async function downloadFont(s: Syntax) {
+	async function downloadFontDef(fontDef: FontDefinition) {
 		downloadError = '';
 
+		const syntax = resolveSyntax(fontDef.syntaxId);
+		if (!syntax) {
+			downloadError = `Syntax "${fontDef.syntaxId}" non trovata per il font "${fontDef.name}"`;
+			return;
+		}
+
+		const resolvedMetrics = resolveMetrics(fontDef.metricsId);
+		const resolvedMetadata = resolveMetadata(fontDef.metadataId);
+
 		try {
-			const font = await generateFont(s, $glyphs, $metrics, $fontMetadata);
-			const fileName = `GTL-${toSafeFileSegment(s.name) || 'style'}.otf`;
+			const font = await generateFont(
+				syntax,
+				$glyphs,
+				resolvedMetrics ?? $metrics,
+				resolvedMetadata ?? $fontMetadata
+			);
+			const fileName = fontDef.outputName || `GTL-${toSafeFileSegment(fontDef.name) || 'font'}.otf`;
 			const buffer = font.toArrayBuffer();
 			const blob = new Blob([buffer], { type: 'font/otf' });
 			const objectUrl = URL.createObjectURL(blob);
@@ -218,32 +262,56 @@
 			<p class="font-mono text-sm text-red-600">Errore download: {downloadError}</p>
 		{/if}
 
-		{#each $syntaxes as syntax (syntax.name)}
-			<FontGenerator glyphs={$glyphs} {syntax} metadata={$fontMetadata} let:font>
-				{#if font}
-					<div class="flex min-h-[72vh] flex-col space-y-4">
-						<div class="flex flex-row flex-nowrap items-center space-x-8">
-							<h2 class="font-mono text-lg">
-								{font.names.unicode?.fullName?.en ?? font.names.windows?.fullName?.en ?? ''}
-							</h2>
-							<Button
-								on:click={() => {
-									downloadFont(syntax);
-								}}>↓ Download</Button
-							>
+		{#if enabledFonts.length > 1}
+			<div class="flex items-center gap-4">
+				<Label target="fontSelector">Font</Label>
+				<select
+					id="fontSelector"
+					class="h-10 min-w-52 bg-slate-200 px-2 font-mono text-sm"
+					bind:value={selectedFontId}
+				>
+					{#each enabledFonts as f (f.id)}
+						<option value={f.id}>{f.name}</option>
+					{/each}
+				</select>
+			</div>
+		{/if}
+
+		{#each displayedFonts as fontDef (fontDef.id)}
+			{@const syntax = resolveSyntax(fontDef.syntaxId)}
+			{@const resolvedMetrics = resolveMetrics(fontDef.metricsId)}
+			{@const resolvedMetadata = resolveMetadata(fontDef.metadataId)}
+			{#if syntax}
+				<FontGenerator glyphs={$glyphs} {syntax} metadata={$fontMetadata} let:font>
+					{#if font}
+						<div class="flex min-h-[72vh] flex-col space-y-4">
+							<div class="flex flex-row flex-nowrap items-center space-x-8">
+								<h2 class="font-mono text-lg">
+									{font.names.unicode?.fullName?.en ?? font.names.windows?.fullName?.en ?? ''}
+								</h2>
+								<Button
+									on:click={() => {
+										downloadFontDef(fontDef);
+									}}>↓ Download</Button
+								>
+							</div>
+							<div class="min-h-0 grow">
+								<FontTextPreview
+									{font}
+									text={previewHasNamedTokens ? validText : $previewText}
+									fontSize={previewFontSize}
+									fontFeatureSettings={previewFeatureSettings}
+									className="h-full"
+								/>
+							</div>
 						</div>
-						<div class="min-h-0 grow">
-							<FontTextPreview
-								{font}
-								text={previewHasNamedTokens ? validText : $previewText}
-								fontSize={previewFontSize}
-								fontFeatureSettings={previewFeatureSettings}
-								className="h-full"
-							/>
-						</div>
-					</div>
-				{/if}
-			</FontGenerator>
+					{/if}
+				</FontGenerator>
+			{:else}
+				<div class="font-mono text-sm text-amber-700">
+					Syntax "{fontDef.syntaxId}" non trovata per font "{fontDef.name}"
+				</div>
+			{/if}
 		{/each}
 	</div>
 </div>

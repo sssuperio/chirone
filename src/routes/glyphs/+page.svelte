@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { GlyphInput, Rule, Syntax } from '$lib/types';
-	import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
+	import {
+		glyphs,
+		metrics,
+		selectedGlyph,
+		syntaxes,
+		activeFontId,
+		fontDefinitions
+	} from '$lib/stores';
 
 	import Sidebar from '$lib/ui/sidebar.svelte';
 	import SidebarTile from '$lib/ui/sidebarTile.svelte';
@@ -33,6 +40,34 @@
 		replaceMappedSymbols,
 		rotateGlyphStructureBody
 	} from '$lib/GTL/structureTransforms';
+
+	$: activeFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+	$: activeSyntax = $syntaxes.find((s) => s.id === activeFont?.syntaxId);
+	$: activeFontGlyphIds = activeFont?.glyphIds;
+	$: fontFiltersGlyphs = activeFontGlyphIds && activeFontGlyphIds.length > 0;
+
+	// Auto-assign new glyphs to the active font
+	let lastGlyphCount = 0;
+	$: {
+		if ($activeFontId && $glyphs.length > lastGlyphCount && lastGlyphCount > 0) {
+			const currentFont = $fontDefinitions.find((f) => f.id === $activeFontId);
+			if (currentFont) {
+				const existingIds = new Set(currentFont.glyphIds ?? []);
+				const newGlyphIds = $glyphs.filter((g) => !existingIds.has(g.id)).map((g) => g.id);
+				if (newGlyphIds.length > 0) {
+					fontDefinitions.update((fonts) =>
+						fonts.map((f) =>
+							f.id === $activeFontId
+								? { ...f, glyphIds: [...(f.glyphIds ?? []), ...newGlyphIds] }
+								: f
+						)
+					);
+				}
+			}
+		}
+		lastGlyphCount = $glyphs.length;
+	}
+	$: fontFiltersGlyphs = activeFontGlyphIds && activeFontGlyphIds.length > 0;
 
 	//
 
@@ -1269,7 +1304,8 @@
 											resolvedBody={resolvedGlyphBody}
 											resolvedComponentSources={resolvedGlyphComponentSources}
 											brushes={brushSymbols}
-											minRows={$metrics.height}
+											minRows={activeSyntax?.grid?.rows ?? $metrics.height}
+											minColumns={activeSyntax?.grid?.columns ?? 1}
 											{rulesBySymbol}
 											showGrid={activeGlyphEditorTab === 'visualDesign'}
 											on:change={scheduleTouchGlyphs}

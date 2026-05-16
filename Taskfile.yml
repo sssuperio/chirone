@@ -55,6 +55,12 @@ tasks:
     desc: Run formatting and lint checks
     cmds:
       - bun run lint
+      - task lint:design
+
+  lint:design:
+    desc: Validate DESIGN.md
+    cmds:
+      - if [ -f DESIGN.md ]; then npx --yes @google/design.md lint DESIGN.md; fi
 
   format:
     desc: Format the codebase

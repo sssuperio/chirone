@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -26,6 +29,41 @@ var version = "dev"
 
 const defaultRuntimeSyncAPIBase = "https://chirone.sssuper.io"
 
+func adminPassword() string {
+	if pw := os.Getenv("CHIRONE_ADMIN_PASSWORD"); pw != "" {
+		return pw
+	}
+	return "ch1r0ne"
+}
+
+func loadEnvFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.IndexByte(line, '=')
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if key == "" {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); !exists {
+			os.Setenv(key, val)
+		}
+	}
+}
+
 //go:embed all:web/dist
 var embeddedAssets embed.FS
 
@@ -39,15 +77,20 @@ func init() {
 }
 
 type projectSnapshot struct {
-	Glyphs   json.RawMessage `json:"glyphs"`
-	Syntaxes json.RawMessage `json:"syntaxes"`
-	Metrics  json.RawMessage `json:"metrics"`
+	Glyphs          json.RawMessage `json:"glyphs"`
+	Syntaxes        json.RawMessage `json:"syntaxes"`
+	Metrics         json.RawMessage `json:"metrics"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	MetricsPresets  json.RawMessage `json:"metricsPresets,omitempty"`
+	MetadataPresets json.RawMessage `json:"metadataPresets,omitempty"`
+	Fonts           json.RawMessage `json:"fonts,omitempty"`
 }
 
 type projectDocument struct {
-	Project   string `json:"project"`
-	Version   int64  `json:"version"`
-	UpdatedAt string `json:"updatedAt"`
+	Project      string `json:"project"`
+	Version      int64  `json:"version"`
+	UpdatedAt    string `json:"updatedAt"`
+	PasswordHash string `json:"passwordHash,omitempty"`
 	projectSnapshot
 }
 
@@ -60,12 +103,14 @@ type updateProjectRequest struct {
 type updateGlyphRequest struct {
 	ClientID    string          `json:"clientId"`
 	BaseVersion *int64          `json:"baseVersion,omitempty"`
+	FontID      string          `json:"fontId,omitempty"`
 	Glyph       json.RawMessage `json:"glyph"`
 }
 
 type deleteGlyphRequest struct {
 	ClientID    string `json:"clientId"`
 	BaseVersion *int64 `json:"baseVersion,omitempty"`
+	FontID      string `json:"fontId,omitempty"`
 	ID          string `json:"id"`
 }
 
@@ -85,6 +130,24 @@ type updateMetricsRequest struct {
 	ClientID    string          `json:"clientId"`
 	BaseVersion *int64          `json:"baseVersion,omitempty"`
 	Metrics     json.RawMessage `json:"metrics"`
+}
+
+type updateMetadataRequest struct {
+	ClientID    string          `json:"clientId"`
+	BaseVersion *int64          `json:"baseVersion,omitempty"`
+	Metadata    json.RawMessage `json:"metadata"`
+}
+
+type updateFontRequest struct {
+	ClientID    string          `json:"clientId"`
+	BaseVersion *int64          `json:"baseVersion,omitempty"`
+	Font        json.RawMessage `json:"font"`
+}
+
+type deleteFontRequest struct {
+	ClientID    string `json:"clientId"`
+	BaseVersion *int64 `json:"baseVersion,omitempty"`
+	ID          string `json:"id"`
 }
 
 type versionConflictError struct {
@@ -126,9 +189,12 @@ type entityUpdateResponse struct {
 
 type projectResponse struct {
 	projectDocument
-	GlyphVersions  map[string]int64 `json:"glyphVersions,omitempty"`
-	SyntaxVersions map[string]int64 `json:"syntaxVersions,omitempty"`
-	MetricsVersion int64            `json:"metricsVersion,omitempty"`
+	GlyphVersions           map[string]int64 `json:"glyphVersions,omitempty"`
+	SyntaxVersions          map[string]int64 `json:"syntaxVersions,omitempty"`
+	MetricsVersion          int64            `json:"metricsVersion,omitempty"`
+	MetricsPresetsVersions  map[string]int64 `json:"metricsPresetsVersions,omitempty"`
+	MetadataPresetsVersions map[string]int64 `json:"metadataPresetsVersions,omitempty"`
+	FontsVersions           map[string]int64 `json:"fontsVersions,omitempty"`
 }
 
 type projectVersionResponse struct {
@@ -181,6 +247,41 @@ type appVersionResponse struct {
 	SHA     string `json:"sha"`
 }
 
+type projectMeta struct {
+	Project     string `json:"project"`
+	Version     int64  `json:"version"`
+	UpdatedAt   string `json:"updatedAt"`
+	HasPassword bool   `json:"hasPassword"`
+}
+
+type projectListResponse struct {
+	Projects []projectMeta `json:"projects"`
+}
+
+type projectAuthRequest struct {
+	Password string `json:"password"`
+}
+
+type projectSetPasswordRequest struct {
+	Password    string `json:"password"`
+	OldPassword string `json:"oldPassword,omitempty"`
+}
+
+func hashPassword(password string) string {
+	if password == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte("chirone:" + password))
+	return hex.EncodeToString(h[:])
+}
+
+func verifyPassword(password, hash string) bool {
+	if hash == "" {
+		return true
+	}
+	return hashPassword(password) == hash
+}
+
 func (e *versionConflictError) Error() string {
 	return fmt.Sprintf(
 		"version conflict: baseVersion=%d currentVersion=%d",
@@ -201,14 +302,22 @@ type projectEvent struct {
 }
 
 type projectState struct {
-	Doc            projectDocument
-	Glyphs         map[string]json.RawMessage
-	Syntaxes       map[string]json.RawMessage
-	Metrics        json.RawMessage
-	GlyphVersions  map[string]int64
-	SyntaxVersions map[string]int64
-	MetricsVersion int64
-	Subs           map[chan projectEvent]struct{}
+	Doc                    projectDocument
+	Glyphs                 map[string]json.RawMessage
+	Syntaxes               map[string]json.RawMessage
+	Metrics                json.RawMessage
+	Metadata               json.RawMessage
+	MetricsPresets         map[string]json.RawMessage
+	MetadataPresets        map[string]json.RawMessage
+	Fonts                  map[string]json.RawMessage
+	GlyphVersions          map[string]int64
+	SyntaxVersions         map[string]int64
+	MetricsVersion         int64
+	MetadataVersion        int64
+	MetricsPresetsVersion  map[string]int64
+	MetadataPresetsVersion map[string]int64
+	FontsVersion           map[string]int64
+	Subs                   map[chan projectEvent]struct{}
 }
 
 type hub struct {
@@ -259,11 +368,60 @@ func normalizeSnapshot(snapshot projectSnapshot) (projectSnapshot, error) {
 		out.Metrics = snapshot.Metrics
 	}
 
+	if len(snapshot.Metadata) == 0 {
+		out.Metadata = json.RawMessage(`{}`)
+	} else {
+		if !json.Valid(snapshot.Metadata) {
+			return out, errors.New("metadata is not valid JSON")
+		}
+		out.Metadata = snapshot.Metadata
+	}
+
+	if len(snapshot.MetricsPresets) == 0 {
+		out.MetricsPresets = json.RawMessage(`[]`)
+	} else {
+		if !json.Valid(snapshot.MetricsPresets) {
+			return out, errors.New("metricsPresets is not valid JSON")
+		}
+		out.MetricsPresets = snapshot.MetricsPresets
+	}
+
+	if len(snapshot.MetadataPresets) == 0 {
+		out.MetadataPresets = json.RawMessage(`[]`)
+	} else {
+		if !json.Valid(snapshot.MetadataPresets) {
+			return out, errors.New("metadataPresets is not valid JSON")
+		}
+		out.MetadataPresets = snapshot.MetadataPresets
+	}
+
+	if len(snapshot.Fonts) == 0 {
+		out.Fonts = json.RawMessage(`[]`)
+	} else {
+		if !json.Valid(snapshot.Fonts) {
+			return out, errors.New("fonts is not valid JSON")
+		}
+		out.Fonts = snapshot.Fonts
+	}
+
 	return out, nil
 }
 
 type entityID struct {
 	ID string `json:"id"`
+}
+
+func jsonField(raw json.RawMessage, key string) (string, bool) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return "", false
+	}
+	v, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
 }
 
 func normalizedRawObject(raw json.RawMessage, errPrefix string) (json.RawMessage, error) {
@@ -354,11 +512,31 @@ func rebuildProjectSnapshot(state *projectState) error {
 	if len(metrics) == 0 {
 		metrics = json.RawMessage(`{}`)
 	}
+	metadata := state.Metadata
+	if len(metadata) == 0 {
+		metadata = json.RawMessage(`{}`)
+	}
+	metricsPresets, err := serializeEntityMap(state.MetricsPresets)
+	if err != nil {
+		return err
+	}
+	metadataPresets, err := serializeEntityMap(state.MetadataPresets)
+	if err != nil {
+		return err
+	}
+	fonts, err := serializeEntityMap(state.Fonts)
+	if err != nil {
+		return err
+	}
 
 	state.Doc.projectSnapshot = projectSnapshot{
-		Glyphs:   glyphs,
-		Syntaxes: syntaxes,
-		Metrics:  metrics,
+		Glyphs:          glyphs,
+		Syntaxes:        syntaxes,
+		Metrics:         metrics,
+		Metadata:        metadata,
+		MetricsPresets:  metricsPresets,
+		MetadataPresets: metadataPresets,
+		Fonts:           fonts,
 	}
 	return nil
 }
@@ -384,21 +562,55 @@ func newProjectStateFromDocument(doc projectDocument) (*projectState, error) {
 		return nil, err
 	}
 
+	metadata, err := normalizedRawObject(snapshot.Metadata, "metadata")
+	if err != nil {
+		return nil, err
+	}
+
+	metricsPresetsMap, err := parseEntityArrayByID(snapshot.MetricsPresets, "metricsPresets")
+	if err != nil {
+		return nil, err
+	}
+	metadataPresetsMap, err := parseEntityArrayByID(snapshot.MetadataPresets, "metadataPresets")
+	if err != nil {
+		return nil, err
+	}
+	fontsMap, err := parseEntityArrayByID(snapshot.Fonts, "fonts")
+	if err != nil {
+		return nil, err
+	}
+
 	state := &projectState{
-		Doc:            doc,
-		Glyphs:         glyphMap,
-		Syntaxes:       syntaxMap,
-		Metrics:        metrics,
-		GlyphVersions:  map[string]int64{},
-		SyntaxVersions: map[string]int64{},
-		MetricsVersion: 1,
-		Subs:           map[chan projectEvent]struct{}{},
+		Doc:                    doc,
+		Glyphs:                 glyphMap,
+		Syntaxes:               syntaxMap,
+		Metrics:                metrics,
+		Metadata:               metadata,
+		MetricsPresets:         metricsPresetsMap,
+		MetadataPresets:        metadataPresetsMap,
+		Fonts:                  fontsMap,
+		GlyphVersions:          map[string]int64{},
+		SyntaxVersions:         map[string]int64{},
+		MetricsVersion:         1,
+		MetricsPresetsVersion:  map[string]int64{},
+		MetadataPresetsVersion: map[string]int64{},
+		FontsVersion:           map[string]int64{},
+		Subs:                   map[chan projectEvent]struct{}{},
 	}
 	for id := range glyphMap {
 		state.GlyphVersions[id] = 1
 	}
 	for id := range syntaxMap {
 		state.SyntaxVersions[id] = 1
+	}
+	for id := range metricsPresetsMap {
+		state.MetricsPresetsVersion[id] = 1
+	}
+	for id := range metadataPresetsMap {
+		state.MetadataPresetsVersion[id] = 1
+	}
+	for id := range fontsMap {
+		state.FontsVersion[id] = 1
 	}
 	if err := rebuildProjectSnapshot(state); err != nil {
 		return nil, err
@@ -432,6 +644,42 @@ func (h *hub) projectSyntaxDir(projectID string) string {
 
 func (h *hub) projectMetricsFile(projectID string) string {
 	return filepath.Join(h.projectDir(projectID), "metrics.json")
+}
+
+func (h *hub) projectMetadataFile(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "metadata.json")
+}
+
+func (h *hub) projectMetricsPresetsDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "metrics")
+}
+
+func (h *hub) projectMetricsPresetsFile(projectID, filename string) string {
+	return filepath.Join(h.projectMetricsPresetsDir(projectID), filename)
+}
+
+func (h *hub) projectMetadataPresetsDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "metadata")
+}
+
+func (h *hub) projectMetadataPresetsFile(projectID, filename string) string {
+	return filepath.Join(h.projectMetadataPresetsDir(projectID), filename)
+}
+
+func (h *hub) projectFontsDir(projectID string) string {
+	return filepath.Join(h.projectDir(projectID), "fonts")
+}
+
+func (h *hub) projectFontsFile(projectID, filename string) string {
+	return filepath.Join(h.projectFontsDir(projectID), filename)
+}
+
+func (h *hub) projectFontGlyphDir(projectID, fontID string) string {
+	return filepath.Join(h.projectDir(projectID), "font-glyphs", fontID)
+}
+
+func (h *hub) projectFontGlyphFile(projectID, fontID, filename string) string {
+	return filepath.Join(h.projectFontGlyphDir(projectID, fontID), filename)
 }
 
 func (h *hub) projectGlyphFile(projectID, filename string) string {
@@ -670,6 +918,65 @@ func (h *hub) saveProjectStateToDisk(projectID string, state *projectState) erro
 		return err
 	}
 
+	metadataBytes, err := json.MarshalIndent(json.RawMessage(state.Metadata), "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writeJSONAtomic(h.projectMetadataFile(projectID), metadataBytes); err != nil {
+		return err
+	}
+
+	metricsPresetsFilesByID := entityFileNamesByID(state.MetricsPresets)
+	metricsPresetsExpectedFiles := make(map[string]struct{}, len(metricsPresetsFilesByID))
+	for id, raw := range state.MetricsPresets {
+		entryBytes, err := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err != nil {
+			return err
+		}
+		filename := metricsPresetsFilesByID[id]
+		metricsPresetsExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectMetricsPresetsFile(projectID, filename), entryBytes); err != nil {
+			return err
+		}
+	}
+	if err := removeStaleEntityFiles(h.projectMetricsPresetsDir(projectID), metricsPresetsExpectedFiles); err != nil {
+		return err
+	}
+
+	metadataPresetsFilesByID := entityFileNamesByID(state.MetadataPresets)
+	metadataPresetsExpectedFiles := make(map[string]struct{}, len(metadataPresetsFilesByID))
+	for id, raw := range state.MetadataPresets {
+		entryBytes, err := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err != nil {
+			return err
+		}
+		filename := metadataPresetsFilesByID[id]
+		metadataPresetsExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectMetadataPresetsFile(projectID, filename), entryBytes); err != nil {
+			return err
+		}
+	}
+	if err := removeStaleEntityFiles(h.projectMetadataPresetsDir(projectID), metadataPresetsExpectedFiles); err != nil {
+		return err
+	}
+
+	fontsFilesByID := entityFileNamesByID(state.Fonts)
+	fontsExpectedFiles := make(map[string]struct{}, len(fontsFilesByID))
+	for id, raw := range state.Fonts {
+		entryBytes, err := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err != nil {
+			return err
+		}
+		filename := fontsFilesByID[id]
+		fontsExpectedFiles[filename] = struct{}{}
+		if err := writeJSONAtomic(h.projectFontsFile(projectID, filename), entryBytes); err != nil {
+			return err
+		}
+	}
+	if err := removeStaleEntityFiles(h.projectFontsDir(projectID), fontsExpectedFiles); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -698,31 +1005,45 @@ func cloneInt64Map(input map[string]int64) map[string]int64 {
 
 func cloneProjectStateForPersist(state *projectState) *projectState {
 	return &projectState{
-		Doc:            state.Doc,
-		Glyphs:         cloneRawMap(state.Glyphs),
-		Syntaxes:       cloneRawMap(state.Syntaxes),
-		Metrics:        cloneRawMessage(state.Metrics),
-		GlyphVersions:  cloneInt64Map(state.GlyphVersions),
-		SyntaxVersions: cloneInt64Map(state.SyntaxVersions),
-		MetricsVersion: state.MetricsVersion,
-		Subs:           nil,
+		Doc:                    state.Doc,
+		Glyphs:                 cloneRawMap(state.Glyphs),
+		Syntaxes:               cloneRawMap(state.Syntaxes),
+		Metrics:                cloneRawMessage(state.Metrics),
+		Metadata:               cloneRawMessage(state.Metadata),
+		MetricsPresets:         cloneRawMap(state.MetricsPresets),
+		MetadataPresets:        cloneRawMap(state.MetadataPresets),
+		Fonts:                  cloneRawMap(state.Fonts),
+		GlyphVersions:          cloneInt64Map(state.GlyphVersions),
+		SyntaxVersions:         cloneInt64Map(state.SyntaxVersions),
+		MetricsVersion:         state.MetricsVersion,
+		MetricsPresetsVersion:  cloneInt64Map(state.MetricsPresetsVersion),
+		MetadataPresetsVersion: cloneInt64Map(state.MetadataPresetsVersion),
+		FontsVersion:           cloneInt64Map(state.FontsVersion),
+		Subs:                   nil,
 	}
 }
 
 func cloneProjectSnapshot(snapshot projectSnapshot) projectSnapshot {
 	return projectSnapshot{
-		Glyphs:   cloneRawMessage(snapshot.Glyphs),
-		Syntaxes: cloneRawMessage(snapshot.Syntaxes),
-		Metrics:  cloneRawMessage(snapshot.Metrics),
+		Glyphs:          cloneRawMessage(snapshot.Glyphs),
+		Syntaxes:        cloneRawMessage(snapshot.Syntaxes),
+		Metrics:         cloneRawMessage(snapshot.Metrics),
+		Metadata:        cloneRawMessage(snapshot.Metadata),
+		MetricsPresets:  cloneRawMessage(snapshot.MetricsPresets),
+		MetadataPresets: cloneRawMessage(snapshot.MetadataPresets),
+		Fonts:           cloneRawMessage(snapshot.Fonts),
 	}
 }
 
 func projectResponseFromState(state *projectState) projectResponse {
 	return projectResponse{
-		projectDocument: state.Doc,
-		GlyphVersions:   cloneInt64Map(state.GlyphVersions),
-		SyntaxVersions:  cloneInt64Map(state.SyntaxVersions),
-		MetricsVersion:  state.MetricsVersion,
+		projectDocument:         state.Doc,
+		GlyphVersions:           cloneInt64Map(state.GlyphVersions),
+		SyntaxVersions:          cloneInt64Map(state.SyntaxVersions),
+		MetricsVersion:          state.MetricsVersion,
+		MetricsPresetsVersions:  cloneInt64Map(state.MetricsPresetsVersion),
+		MetadataPresetsVersions: cloneInt64Map(state.MetadataPresetsVersion),
+		FontsVersions:           cloneInt64Map(state.FontsVersion),
 	}
 }
 
@@ -1165,13 +1486,20 @@ func newEmptyProjectState(projectID string) (*projectState, error) {
 			Version:   0,
 			UpdatedAt: now,
 		},
-		Glyphs:         map[string]json.RawMessage{},
-		Syntaxes:       map[string]json.RawMessage{},
-		Metrics:        json.RawMessage(`{}`),
-		GlyphVersions:  map[string]int64{},
-		SyntaxVersions: map[string]int64{},
-		MetricsVersion: 0,
-		Subs:           map[chan projectEvent]struct{}{},
+		Glyphs:                 map[string]json.RawMessage{},
+		Syntaxes:               map[string]json.RawMessage{},
+		Metrics:                json.RawMessage(`{}`),
+		Metadata:               json.RawMessage(`{}`),
+		MetricsPresets:         map[string]json.RawMessage{},
+		MetadataPresets:        map[string]json.RawMessage{},
+		Fonts:                  map[string]json.RawMessage{},
+		GlyphVersions:          map[string]int64{},
+		SyntaxVersions:         map[string]int64{},
+		MetricsVersion:         0,
+		MetricsPresetsVersion:  map[string]int64{},
+		MetadataPresetsVersion: map[string]int64{},
+		FontsVersion:           map[string]int64{},
+		Subs:                   map[chan projectEvent]struct{}{},
 	}
 	if err := rebuildProjectSnapshot(state); err != nil {
 		return nil, err
@@ -1639,6 +1967,280 @@ func (h *hub) deleteGlyph(projectID string, req deleteGlyphRequest) (entityUpdat
 	return response, nil
 }
 
+func (h *hub) updateMetadata(projectID string, req updateMetadataRequest) (entityUpdateResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+	metadataRaw, err := normalizedRawObject(req.Metadata, "metadata")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	var (
+		response    entityUpdateResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+
+	if req.BaseVersion == nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("missing baseVersion")
+	}
+
+	currentVersion := state.MetadataVersion
+	if *req.BaseVersion != currentVersion {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, &entityConflictError{
+			ExpectedVersion: *req.BaseVersion,
+			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
+			Entity:          "metadata",
+			EntityID:        "",
+			EntityDeleted:   false,
+			UpdatedAt:       state.Doc.UpdatedAt,
+			Payload:         cloneRawMessage(state.Metadata),
+		}
+	}
+
+	nextVersion := currentVersion
+	if string(state.Metadata) != string(metadataRaw) {
+		if nextVersion < 1 {
+			nextVersion = 1
+		} else {
+			nextVersion++
+		}
+		state.Metadata = metadataRaw
+		state.MetadataVersion = nextVersion
+		if err := applyProjectMutation(state, projectID); err != nil {
+			h.mu.Unlock()
+			return entityUpdateResponse{}, err
+		}
+		persistCopy = cloneProjectStateForPersist(state)
+		channels = collectSubscriberChannels(state)
+		event = &projectEvent{
+			Type:            "metadata_update",
+			ClientID:        req.ClientID,
+			Entity:          "metadata",
+			EntityVersion:   nextVersion,
+			Payload:         cloneRawMessage(metadataRaw),
+			projectDocument: state.Doc,
+		}
+	}
+
+	response = entityUpdateResponse{
+		Project:        projectID,
+		Entity:         "metadata",
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(state.Metadata),
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return entityUpdateResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
+func (h *hub) updateFont(projectID string, req updateFontRequest) (entityUpdateResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+	fontRaw, err := normalizedRawObject(req.Font, "font")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	var fontID string
+	if id, ok := jsonField(fontRaw, "id"); ok {
+		fontID = id
+	} else {
+		return entityUpdateResponse{}, errors.New("font must have an id field")
+	}
+
+	var (
+		response    entityUpdateResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+
+	if req.BaseVersion == nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("missing baseVersion")
+	}
+
+	currentVersion := state.FontsVersion[fontID]
+	if *req.BaseVersion != currentVersion {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, &entityConflictError{
+			ExpectedVersion: *req.BaseVersion,
+			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
+			Entity:          "font",
+			EntityID:        fontID,
+			EntityDeleted:   false,
+			UpdatedAt:       state.Doc.UpdatedAt,
+			Payload:         state.Fonts[fontID],
+		}
+	}
+
+	nextVersion := currentVersion
+	existing, exists := state.Fonts[fontID]
+	if !exists || string(existing) != string(fontRaw) {
+		if nextVersion < 1 {
+			nextVersion = 1
+		} else {
+			nextVersion++
+		}
+		state.Fonts[fontID] = fontRaw
+		state.FontsVersion[fontID] = nextVersion
+		if err := applyProjectMutation(state, projectID); err != nil {
+			h.mu.Unlock()
+			return entityUpdateResponse{}, err
+		}
+		persistCopy = cloneProjectStateForPersist(state)
+		channels = collectSubscriberChannels(state)
+		event = &projectEvent{
+			Type:            "font_upsert",
+			ClientID:        req.ClientID,
+			Entity:          "font",
+			EntityID:        fontID,
+			EntityVersion:   nextVersion,
+			Payload:         cloneRawMessage(fontRaw),
+			projectDocument: state.Doc,
+		}
+	}
+
+	response = entityUpdateResponse{
+		Project:        projectID,
+		Entity:         "font",
+		EntityID:       fontID,
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(state.Fonts[fontID]),
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return entityUpdateResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
+func (h *hub) deleteFont(projectID string, req deleteFontRequest) (entityUpdateResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+
+	if req.ID == "" {
+		return entityUpdateResponse{}, errors.New("missing font id")
+	}
+
+	var (
+		response    entityUpdateResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+
+	fontRaw, exists := state.Fonts[req.ID]
+	if !exists {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("font not found")
+	}
+
+	if req.BaseVersion == nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("missing baseVersion")
+	}
+
+	currentVersion := state.FontsVersion[req.ID]
+	if *req.BaseVersion != currentVersion {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, &entityConflictError{
+			ExpectedVersion: *req.BaseVersion,
+			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
+			Entity:          "font",
+			EntityID:        req.ID,
+			EntityDeleted:   false,
+			UpdatedAt:       state.Doc.UpdatedAt,
+			Payload:         fontRaw,
+		}
+	}
+
+	delete(state.Fonts, req.ID)
+	delete(state.FontsVersion, req.ID)
+	if err := applyProjectMutation(state, projectID); err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+	persistCopy = cloneProjectStateForPersist(state)
+	channels = collectSubscriberChannels(state)
+	event = &projectEvent{
+		Type:            "font_delete",
+		ClientID:        req.ClientID,
+		Entity:          "font",
+		EntityID:        req.ID,
+		EntityDeleted:   true,
+		EntityVersion:   currentVersion + 1,
+		projectDocument: state.Doc,
+	}
+
+	response = entityUpdateResponse{
+		Project:        projectID,
+		Entity:         "font",
+		EntityID:       req.ID,
+		Deleted:        true,
+		Version:        currentVersion + 1,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return entityUpdateResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
 func (h *hub) updateSyntax(projectID string, req updateSyntaxRequest) (entityUpdateResponse, error) {
 	projectID = sanitizeProjectID(projectID)
 	id, syntaxRaw, err := parseEntityItem(req.Syntax, "syntax")
@@ -2045,6 +2647,239 @@ func writeEntityConflict(w http.ResponseWriter, projectID string, conflictErr *e
 	})
 }
 
+func (s *server) projectNeedsPassword(projectID string) bool {
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil || !exists {
+		return false
+	}
+	return doc.PasswordHash != ""
+}
+
+func (s *server) checkProjectPassword(r *http.Request, projectID string) bool {
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil || !exists {
+		return true
+	}
+	if doc.PasswordHash == "" {
+		return true
+	}
+	password := r.Header.Get("X-Chirone-Password")
+	return verifyPassword(password, doc.PasswordHash)
+}
+
+type createProjectRequest struct {
+	Project  string `json:"project"`
+	Password string `json:"password,omitempty"`
+}
+
+func (s *server) handleProjectCreate(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	adminPw := r.Header.Get("X-Chirone-Admin-Password")
+	if adminPw != adminPassword() {
+		http.Error(w, "admin password required", http.StatusForbidden)
+		return
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req createProjectRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	projectID := sanitizeProjectID(req.Project)
+	if projectID == "" || projectID == "default" {
+		http.Error(w, "invalid project name", http.StatusBadRequest)
+		return
+	}
+
+	// Check if project already exists
+	if _, exists, _ := s.hub.getProject(projectID); exists {
+		http.Error(w, "project already exists", http.StatusConflict)
+		return
+	}
+
+	state, err := newEmptyProjectState(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if req.Password != "" {
+		state.Doc.PasswordHash = hashPassword(req.Password)
+	}
+
+	if err := s.hub.saveProjectToDisk(state.Doc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := projectMeta{
+		Project:     state.Doc.Project,
+		Version:     state.Doc.Version,
+		UpdatedAt:   state.Doc.UpdatedAt,
+		HasPassword: state.Doc.PasswordHash != "",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *server) handleProjectAuth(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req projectAuthRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	if !verifyPassword(req.Password, doc.PasswordHash) {
+		http.Error(w, "invalid password", http.StatusForbidden)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *server) handleProjectPassword(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req projectSetPasswordRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	doc, exists, err := s.hub.getProject(projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	if !verifyPassword(req.OldPassword, doc.PasswordHash) {
+		http.Error(w, "invalid current password", http.StatusForbidden)
+		return
+	}
+
+	doc.PasswordHash = hashPassword(req.Password)
+	if err := s.hub.saveProjectToDisk(doc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *server) handleProjectList(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	h := s.hub
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	entries, err := os.ReadDir(h.dataDir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(projectListResponse{Projects: []projectMeta{}})
+		return
+	}
+
+	projects := make([]projectMeta, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if pathpkg.Ext(name) != ".json" {
+			continue
+		}
+		projectID := strings.TrimSuffix(name, ".json")
+		if !projectIDPattern.MatchString(projectID) {
+			continue
+		}
+
+		doc, err := h.loadProjectFromDisk(projectID)
+		if err != nil {
+			continue
+		}
+
+		projects = append(projects, projectMeta{
+			Project:     doc.Project,
+			Version:     doc.Version,
+			UpdatedAt:   doc.UpdatedAt,
+			HasPassword: doc.PasswordHash != "",
+		})
+	}
+
+	sort.Slice(projects, func(i, j int) bool {
+		return projects[i].Project < projects[j].Project
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(projectListResponse{Projects: projects})
+}
+
 func (s *server) handleProject(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
 	if r.Method == http.MethodOptions {
@@ -2242,6 +3077,10 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
 		defer func() {
 			_ = r.Body.Close()
 		}()
@@ -2263,6 +3102,10 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	case http.MethodDelete:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
 		defer func() {
 			_ = r.Body.Close()
 		}()
@@ -2288,6 +3131,203 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Font-scoped glyph storage
+
+func (h *hub) saveFontGlyph(projectID, fontID string, glyphRaw json.RawMessage) (entityUpdateResponse, error) {
+	id, normalized, err := parseEntityItem(glyphRaw, "glyph")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	bytes, err := json.MarshalIndent(json.RawMessage(normalized), "", "  ")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	filename := sanitizeEntityFilenameBase(entityNameFromRaw(normalized))
+	if filename == "" {
+		filename = sanitizeEntityFilenameBase(id)
+	}
+	if filename == "" {
+		filename = "unnamed"
+	}
+
+	if err := writeJSONAtomic(h.projectFontGlyphFile(projectID, fontID, filename+".json"), bytes); err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	return entityUpdateResponse{
+		Project:   projectID,
+		Entity:    "fontGlyph",
+		EntityID:  id,
+		Version:   1,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Payload:   cloneRawMessage(normalized),
+	}, nil
+}
+
+func (h *hub) deleteFontGlyph(projectID, fontID, glyphID string) (entityUpdateResponse, error) {
+	glyphID = strings.TrimSpace(glyphID)
+	if glyphID == "" {
+		return entityUpdateResponse{}, errors.New("missing id")
+	}
+
+	dir := h.projectFontGlyphDir(projectID, fontID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return entityUpdateResponse{Project: projectID, Entity: "fontGlyph", EntityID: glyphID, Deleted: true}, nil
+		}
+		return entityUpdateResponse{}, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if pathpkg.Ext(name) != ".json" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		var parsed entityID
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			continue
+		}
+		if parsed.ID == glyphID {
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+				return entityUpdateResponse{}, err
+			}
+			return entityUpdateResponse{
+				Project:   projectID,
+				Entity:    "fontGlyph",
+				EntityID:  glyphID,
+				Deleted:   true,
+				UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}, nil
+		}
+	}
+
+	return entityUpdateResponse{Project: projectID, Entity: "fontGlyph", EntityID: glyphID, Deleted: true}, nil
+}
+
+func (h *hub) listFontGlyphs(projectID, fontID string) ([]json.RawMessage, error) {
+	dir := h.projectFontGlyphDir(projectID, fontID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []json.RawMessage{}, nil
+		}
+		return nil, err
+	}
+
+	var result []json.RawMessage
+	for _, entry := range entries {
+		if entry.IsDir() || pathpkg.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		result = append(result, json.RawMessage(raw))
+	}
+	return result, nil
+}
+
+func (s *server) handleFontGlyph(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+	fontID := strings.TrimSpace(r.URL.Query().Get("font"))
+	if fontID == "" {
+		http.Error(w, "missing font id", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() { _ = r.Body.Close() }()
+		var req updateGlyphRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.saveFontGlyph(projectID, fontID, req.Glyph)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	case http.MethodDelete:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() { _ = r.Body.Close() }()
+		var req deleteGlyphRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.deleteFontGlyph(projectID, fontID, req.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *server) handleFontGlyphList(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+	fontID := strings.TrimSpace(r.URL.Query().Get("font"))
+	if fontID == "" {
+		http.Error(w, "missing font id", http.StatusBadRequest)
+		return
+	}
+
+	glyphs, err := s.hub.listFontGlyphs(projectID, fontID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(glyphs)
+}
+
 func (s *server) handleSyntax(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
 	if r.Method == http.MethodOptions {
@@ -2302,6 +3342,10 @@ func (s *server) handleSyntax(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
 		defer func() {
 			_ = r.Body.Close()
 		}()
@@ -2364,6 +3408,11 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		projectID = "default"
 	}
 
+	if !s.checkProjectPassword(r, projectID) {
+		http.Error(w, "invalid password", http.StatusForbidden)
+		return
+	}
+
 	defer func() {
 		_ = r.Body.Close()
 	}()
@@ -2385,6 +3434,117 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
+func (s *server) handleMetadata(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	if !s.checkProjectPassword(r, projectID) {
+		http.Error(w, "invalid password", http.StatusForbidden)
+		return
+	}
+
+	defer func() {
+		_ = r.Body.Close()
+	}()
+	var req updateMetadataRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	resp, err := s.hub.updateMetadata(projectID, req)
+	if err != nil {
+		var conflictErr *entityConflictError
+		if errors.As(err, &conflictErr) {
+			writeEntityConflict(w, projectID, conflictErr)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *server) handleFont(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() {
+			_ = r.Body.Close()
+		}()
+		var req updateFontRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.updateFont(projectID, req)
+		if err != nil {
+			var conflictErr *entityConflictError
+			if errors.As(err, &conflictErr) {
+				writeEntityConflict(w, projectID, conflictErr)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	case http.MethodDelete:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() {
+			_ = r.Body.Close()
+		}()
+		var req deleteFontRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.deleteFont(projectID, req)
+		if err != nil {
+			var conflictErr *entityConflictError
+			if errors.As(err, &conflictErr) {
+				writeEntityConflict(w, projectID, conflictErr)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 
 func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
@@ -2607,12 +3767,20 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/project", s.handleProject)
+	mux.HandleFunc("/api/projects", s.handleProjectList)
+	mux.HandleFunc("/api/project/create", s.handleProjectCreate)
+	mux.HandleFunc("/api/project/auth", s.handleProjectAuth)
+	mux.HandleFunc("/api/project/password", s.handleProjectPassword)
 	mux.HandleFunc("/api/project-version", s.handleProjectVersion)
 	mux.HandleFunc("/api/revisions", s.handleRevisions)
 	mux.HandleFunc("/api/revisions/revert", s.handleRevisionRevert)
 	mux.HandleFunc("/api/glyph", s.handleGlyph)
+	mux.HandleFunc("/api/font-glyph", s.handleFontGlyph)
+	mux.HandleFunc("/api/font-glyphs", s.handleFontGlyphList)
 	mux.HandleFunc("/api/syntax", s.handleSyntax)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
+	mux.HandleFunc("/api/metadata", s.handleMetadata)
+	mux.HandleFunc("/api/font", s.handleFont)
 	mux.HandleFunc("/api/events", s.handleEvents)
 
 	if s.uiFS != nil {
@@ -2645,6 +3813,7 @@ func requestLogger(next http.Handler) http.Handler {
 }
 
 func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
+	loadEnvFile(".env")
 	resolvedUIDir := strings.TrimSpace(uiDir)
 	srv := &server{
 		hub:         newHub(dataDir),
@@ -2678,11 +3847,21 @@ func run(ctx context.Context, addr, dataDir, allowOrigin, uiDir string) error {
 }
 
 func serveCommand(args []string) error {
+	defaultAddr := ":8090"
+	if envAddr := os.Getenv("CHIRONE_ADDR"); envAddr != "" {
+		defaultAddr = envAddr
+	}
+
 	flags := flag.NewFlagSet("chirone", flag.ContinueOnError)
 	flags.Usage = printUsage
 
-	addr := flags.String("addr", ":8090", "address to listen on")
-	dataDir := flags.String("data-dir", "./data", "directory where project snapshots are stored")
+	addr := flags.String("addr", defaultAddr, "address to listen on")
+	defaultDataDir := "./data"
+	if envDataDir := os.Getenv("CHIRONE_DATA_DIR"); envDataDir != "" {
+		defaultDataDir = envDataDir
+	}
+
+	dataDir := flags.String("data-dir", defaultDataDir, "directory where project snapshots are stored")
 	allowOrigin := flags.String("allow-origin", "*", "CORS allowed origin (or * for all)")
 	uiDir := flags.String("ui-dir", "", "optional directory to serve static UI files from instead of embedded assets")
 

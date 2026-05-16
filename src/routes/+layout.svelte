@@ -12,6 +12,14 @@
 		initAppVersionInfo,
 		initCollabSync
 	} from '$lib/collab/client';
+	import { migrateFromLegacyStores } from '$lib/stores/migration';
+	import {
+		activeFontId,
+		fontDefinitions,
+		glyphs,
+		switchToFont,
+		saveGlyphsForFont
+	} from '$lib/stores';
 	import NavLink from '$lib/ui/navLink.svelte';
 
 	const links = [
@@ -20,10 +28,22 @@
 		{ href: `${base}/metrics`, text: 'Metriche' },
 		{ href: `${base}/output`, text: 'Output' },
 		{ href: `${base}/revisioni`, text: 'Revisioni' },
-		{ href: `${base}/settings`, text: 'Impostazioni' }
+		{ href: `${base}/project`, text: 'Progetto' }
 	];
 
+	$: if (!$activeFontId && $fontDefinitions.length > 0) {
+		$activeFontId = $fontDefinitions[0].id;
+	}
+
+	function handleFontChange(event: Event) {
+		const newId = (event.target as HTMLSelectElement).value;
+		if (newId && newId !== $activeFontId) {
+			switchToFont(newId, $activeFontId);
+		}
+	}
+
 	onMount(() => {
+		migrateFromLegacyStores();
 		initAppVersionInfo();
 		const stop = initCollabSync();
 		return () => {
@@ -40,6 +60,20 @@
 		{/each}
 
 		<div class="ml-auto flex min-w-0 items-center gap-3 font-mono text-xs">
+			{#if $fontDefinitions.length > 0}
+				<select
+					class="border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+					value={$activeFontId}
+					on:change={handleFontChange}
+				>
+					{#each $fontDefinitions as f (f.id)}
+						<option value={f.id}>{f.name}</option>
+					{/each}
+				</select>
+			{/if}
+		</div>
+
+		<div class="flex min-w-0 items-center gap-3 font-mono text-xs">
 			{#if $collabStatus.enabled}
 				<span
 					class:text-emerald-300={$collabStatus.state === 'connected'}
