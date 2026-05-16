@@ -8,6 +8,8 @@
 	import RuleShapePreview from '$lib/components/glyph/ruleShapePreview.svelte';
 	import { ShapeKind, createEmptyRule } from '$lib/types';
 	import type { Syntax, Rule } from '$lib/types';
+	import { getGeneratableGlyphSetDefinitions, getGlyphNamesForSet } from '$lib/GTL/glyphSets';
+	import type { GlyphSetID } from '$lib/GTL/glyphSets';
 	import { normalizeFontMetrics } from '$lib/GTL/metrics';
 	import { normalizeFontMetadata } from '$lib/GTL/metadata';
 	import {
@@ -44,6 +46,15 @@
 		rule: Rule;
 	}> = [];
 
+	const defaultSymbols: Record<number, string> = {
+		[ShapeKind.Rectangle]: '#',
+		[ShapeKind.Circle]: 'o',
+		[ShapeKind.Ellipse]: '0',
+		[ShapeKind.Quarter]: 'q',
+		[ShapeKind.Triangle]: 't',
+		[ShapeKind.SVG]: 's'
+	};
+
 	function initShapes() {
 		const kinds = [
 			ShapeKind.Rectangle,
@@ -61,13 +72,17 @@
 			[ShapeKind.Triangle]: 'Triangolo',
 			[ShapeKind.SVG]: 'Curva'
 		};
-		shapeChoices = kinds.map((kind, i) => ({
+		shapeChoices = kinds.map((kind) => ({
 			kind,
 			label: labels[kind] ?? 'Forma',
-			symbol: autoSymbols[i] ?? '?',
+			symbol: defaultSymbols[kind] ?? '?',
 			enabled: true,
-			rule: { ...createEmptyRule(kind), symbol: autoSymbols[i] ?? '?' }
+			rule: { ...createEmptyRule(kind), symbol: defaultSymbols[kind] ?? '?' }
 		}));
+	}
+
+	function onSymbolChange(sc: { kind: number; symbol: string; rule: { symbol: string } }) {
+		sc.rule.symbol = sc.symbol;
 	}
 
 	let upm = 5000;
@@ -76,14 +91,31 @@
 	let capHeight = 4;
 	let xHeight = 3;
 
-	let suggestedGlyphs =
-		'ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789\n.,;:!?-';
+	let selectedGlyphSets: Record<string, boolean> = {};
+	let glyphSetDefs = getGeneratableGlyphSetDefinitions();
 
-	$: if (open && step === 0) {
+	$: selectedGlyphNames = glyphSetDefs
+		.filter((d) => selectedGlyphSets[d.id])
+		.flatMap((d) => getGlyphNamesForSet(d.id));
+
+	$: suggestedGlyphs = selectedGlyphNames.join('\n');
+
+	let wizardInitialized = false;
+	$: if (open && !wizardInitialized) {
 		familyName = $projectInfo.name || 'GTL';
 		designer = $fontMetadata.designer || '';
 		initShapes();
+		wizardInitialized = true;
 	}
+	$: if (!open) wizardInitialized = false;
+
+	$: stepClasses = stepLabels.map((_, i) =>
+		i === step
+			? 'rounded px-3 py-1 text-xs bg-blue-600 text-white'
+			: i < step
+				? 'rounded px-3 py-1 text-xs bg-green-200 text-green-800'
+				: 'rounded px-3 py-1 text-xs bg-slate-100 text-slate-400'
+	);
 
 	$: canNext =
 		step === 0
@@ -165,12 +197,6 @@
 		open = false;
 		goto(`${base}/glyphs`);
 	}
-
-	function stepBtnClass(i: number) {
-		if (i === step) return 'rounded px-3 py-1 text-xs bg-blue-600 text-white';
-		if (i < step) return 'rounded px-3 py-1 text-xs bg-green-200 text-green-800';
-		return 'rounded px-3 py-1 text-xs bg-slate-100 text-slate-400';
-	}
 </script>
 
 <Modal
@@ -183,7 +209,7 @@
 	<div class="flex flex-col gap-4" style="min-height: 60vh;">
 		<div class="flex items-center gap-1">
 			{#each stepLabels as name, i}
-				<button class={stepBtnClass(i)} on:click={() => (step = i)} disabled={i > step}>
+				<button class={stepClasses[i]} on:click={() => (step = i)} disabled={i > step}>
 					{i + 1}. {name}
 				</button>
 				{#if i < stepLabels.length - 1}<span class="text-slate-300">→</span>{/if}
@@ -270,8 +296,14 @@
 								</div>
 								<div class="flex-1 text-xs">
 									<div class="font-semibold">{sc.label}</div>
-									<div class="text-slate-400">
-										Simbolo: <span class="font-mono">{sc.symbol}</span>
+									<div class="flex items-center gap-1 text-slate-400">
+										Simbolo:
+										<input
+											class="w-8 border border-slate-300 px-1 py-0.5 text-center font-mono text-xs"
+											maxlength="1"
+											bind:value={sc.symbol}
+											on:input={() => onSymbolChange(sc)}
+										/>
 									</div>
 								</div>
 							</label>
@@ -332,16 +364,34 @@
 					</div>
 				{:else if step === 4}
 					<p class="text-sm font-semibold">Glifi iniziali</p>
-					<p class="text-xs text-slate-500">
-						Ogni carattere qui sotto diventa un glifo che puoi disegnare.
-					</p>
-					<textarea
-						class="h-40 w-full border border-slate-400 px-3 py-2 font-mono text-sm"
-						bind:value={suggestedGlyphs}
-					/>
-					<p class="text-xs text-slate-400">
-						Il font "Regular" verrà creato automaticamente. Potrai aggiungere altri font dopo.
-					</p>
+					<p class="text-xs text-slate-500">Scegli i set di glifi da includere:</p>
+					<div class="grid grid-cols-2 gap-2">
+						{#each glyphSetDefs as def (def.id)}
+							{@const checked = selectedGlyphSets[def.id] === true}
+							{@const names = checked ? getGlyphNamesForSet(def.id) : []}
+							<label
+								class="cursor-pointer rounded border p-2 {checked
+									? 'border-blue-400 bg-blue-50'
+									: 'border-slate-200 hover:bg-slate-50'}"
+							>
+								<div class="flex items-center gap-2">
+									<input type="checkbox" bind:checked={selectedGlyphSets[def.id]} />
+									<span class="text-sm font-semibold">{def.label}</span>
+									<span class="text-xs text-slate-400">({names.length} glifi)</span>
+								</div>
+								{#if checked && names.length > 0}
+									<div class="mt-1 max-h-20 overflow-y-auto font-mono text-xs text-slate-500">
+										{names.slice(0, 30).join(' ')}{names.length > 30 ? ' ...' : ''}
+									</div>
+								{/if}
+							</label>
+						{/each}
+					</div>
+					{#if selectedGlyphNames.length > 0}
+						<p class="text-xs text-slate-400">
+							Saranno creati {selectedGlyphNames.length} glifi totali.
+						</p>
+					{/if}
 				{/if}
 			</div>
 
