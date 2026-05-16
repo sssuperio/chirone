@@ -528,7 +528,7 @@
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<a
-					href="{$base}/glyphs"
+					href="{base}/glyphs"
 					class="rounded px-3 py-1.5 font-mono text-xs no-underline {$glyphs.length > 0
 						? 'bg-green-200 text-green-800'
 						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
@@ -536,7 +536,7 @@
 					{$glyphs.length > 0 ? '✅' : '1.'} Glifi ({$glyphs.length})
 				</a>
 				<a
-					href="{$base}/syntax"
+					href="{base}/syntax"
 					class="rounded px-3 py-1.5 font-mono text-xs no-underline {$syntaxes.length > 0
 						? 'bg-green-200 text-green-800'
 						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
@@ -544,7 +544,7 @@
 					{$syntaxes.length > 0 ? '✅' : '2.'} Sintassi ({$syntaxes.length})
 				</a>
 				<a
-					href="{$base}/metrics"
+					href="{base}/metrics"
 					class="rounded px-3 py-1.5 font-mono text-xs no-underline {$metricsPresets.length > 0
 						? 'bg-green-200 text-green-800'
 						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
