@@ -137,3 +137,31 @@ export function resetProjectState(): void {
 	metricsPresets.set([]);
 	metadataPresets.set([]);
 }
+
+export function syncMetadataPreset(
+	meta: FontMetadata,
+	presets: Array<MetadataPreset>
+): void {
+	const normalized = normalizeFontMetadata(meta as any);
+	if (presets.length === 0) {
+		metadataPresets.set([{ ...normalized, id: 'default', name: 'Default' }]);
+		return;
+	}
+	const current = presets[0];
+	const updated: MetadataPreset = { ...normalized, id: current.id, name: current.name };
+	if (
+		updated.familyName === current.familyName &&
+		updated.version === current.version &&
+		updated.designer === current.designer &&
+		updated.manufacturer === current.manufacturer &&
+		updated.designerURL === current.designerURL &&
+		updated.manufacturerURL === current.manufacturerURL &&
+		updated.license === current.license &&
+		updated.name === current.name
+	) {
+		return; // no change, avoid unnecessary store writes
+	}
+	const next = [...presets];
+	next[0] = updated;
+	metadataPresets.set(next);
+}

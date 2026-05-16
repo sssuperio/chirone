@@ -14,16 +14,16 @@
 		resolveSyntaxName,
 		activeFontId,
 		loadGlyphsForFont,
-		saveGlyphsForFont
+		saveGlyphsForFont,
+		syncMetadataPreset
 	} from '$lib/stores';
-	import { normalizeFontMetadata, defaultFontMetadata } from '$lib/GTL/metadata';
 	import {
 		createProjectArchive,
 		parseProjectArchive,
 		parseLegacyProjectFile,
 		detectArchiveFormat
 	} from '$lib/archive';
-	import type { MetadataPreset, FontDefinition, GlyphInput } from '$lib/types';
+	import type { FontDefinition, GlyphInput } from '$lib/types';
 	import {
 		collabConfig,
 		collabStatus,
@@ -163,10 +163,9 @@
 	let fontOutputName = '';
 	let fontEnabled = true;
 
-	// Metadata editor for active preset
-	let editingMetadata = false;
-	let metadataForm = { ...$fontMetadata };
-
+	// Keep metadataPresets[0] in sync with fontMetadata so the preset
+	// list always reflects the current metadata values.
+	$: syncMetadataPreset($fontMetadata, $metadataPresets);
 	function openNewFont() {
 		editingFont = null;
 		fontName = 'Regular';
@@ -245,35 +244,6 @@
 		if (sourceGlyphs.length > 0) {
 			saveGlyphsForFont(copy.id, JSON.parse(JSON.stringify(sourceGlyphs)));
 		}
-	}
-
-	function openMetadataEditor() {
-		const active = $metadataPresets[0];
-		if (active) {
-			metadataForm = { ...active };
-		} else {
-			metadataForm = { ...defaultFontMetadata };
-		}
-		editingMetadata = true;
-	}
-
-	function saveMetadata() {
-		const normalized = normalizeFontMetadata(metadataForm);
-		fontMetadata.set(normalized);
-
-		const current = $metadataPresets;
-		const preset: MetadataPreset = {
-			...normalized,
-			id: current[0]?.id ?? 'default',
-			name: current[0]?.name ?? 'Default'
-		};
-		if (current.length === 0) {
-			metadataPresets.set([preset]);
-		} else {
-			current[0] = preset;
-			metadataPresets.set([...current]);
-		}
-		editingMetadata = false;
 	}
 
 	async function exportProjectArchive() {
@@ -605,22 +575,15 @@
 		</div>
 
 		<!-- Metadata Editor -->
-		<div class="space-y-3">
-			<div class="flex items-center gap-4">
+			<div class="space-y-3">
 				<p class="font-mono text-lg">Metadata font</p>
-				<Button on:click={openMetadataEditor}>
-					{editingMetadata ? 'Chiudi' : 'Modifica'}
-				</Button>
-			</div>
-
-			{#if editingMetadata}
 				<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 					<div class="space-y-1">
 						<label class="font-mono text-sm" for="fontMetaName">Nome</label>
 						<input
 							id="fontMetaName"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.name}
+							bind:value={$fontMetadata.name}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -628,7 +591,7 @@
 						<input
 							id="fontMetaFamily"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.familyName}
+							bind:value={$fontMetadata.familyName}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -636,7 +599,7 @@
 						<input
 							id="fontMetaVersion"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.version}
+							bind:value={$fontMetadata.version}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -645,7 +608,7 @@
 							id="fontMetaCreated"
 							type="date"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.createdDate}
+							bind:value={$fontMetadata.createdDate}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -653,7 +616,7 @@
 						<input
 							id="fontMetaDesigner"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.designer}
+							bind:value={$fontMetadata.designer}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -661,7 +624,7 @@
 						<input
 							id="fontMetaManufacturer"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.manufacturer}
+							bind:value={$fontMetadata.manufacturer}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -670,7 +633,7 @@
 							id="fontMetaDesignerURL"
 							type="url"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.designerURL}
+							bind:value={$fontMetadata.designerURL}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -679,7 +642,7 @@
 							id="fontMetaManufacturerURL"
 							type="url"
 							class="w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.manufacturerURL}
+							bind:value={$fontMetadata.manufacturerURL}
 						/>
 					</div>
 					<div class="space-y-1">
@@ -687,14 +650,11 @@
 						<textarea
 							id="fontMetaLicense"
 							class="min-h-20 w-full border border-slate-400 px-3 py-2 font-mono"
-							bind:value={metadataForm.license}
+							bind:value={$fontMetadata.license}
 						/>
 					</div>
 				</div>
-				<Button on:click={saveMetadata}>Salva metadata</Button>
-			{/if}
-		</div>
-
+			</div>
 		<!-- Export / Import -->
 		<div class="space-y-3 border-t border-slate-200 pt-6">
 			<p class="font-mono text-lg">Esporta / Importa</p>
