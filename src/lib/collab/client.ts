@@ -297,41 +297,41 @@ function coerceMetrics(input: unknown): FontMetrics | null {
 	} catch {
 		return null;
 	}
-
-	function coerceFontMetadata(input: unknown): FontMetadata | null {
-		if (!isObjectRecord(input)) return null;
-		return input as FontMetadata;
 	}
 
-	function coerceMetadataPresets(input: unknown): Array<MetadataPreset> | undefined {
-		if (!Array.isArray(input)) return undefined;
-		const out: Array<MetadataPreset> = [];
-		for (const item of input) {
-			if (!isObjectRecord(item)) return undefined;
-			out.push(item as MetadataPreset);
-		}
-		return out;
-	}
+function coerceFontMetadata(input: unknown): FontMetadata | null {
+	if (!isObjectRecord(input)) return null;
+	return input as FontMetadata;
+}
 
-	function coerceMetricsPresets(input: unknown): Array<MetricsPreset> | undefined {
-		if (!Array.isArray(input)) return undefined;
-		const out: Array<MetricsPreset> = [];
-		for (const item of input) {
-			if (!isObjectRecord(item)) return undefined;
-			out.push(item as MetricsPreset);
-		}
-		return out;
+function coerceMetadataPresets(input: unknown): Array<MetadataPreset> | undefined {
+	if (!Array.isArray(input)) return undefined;
+	const out: Array<MetadataPreset> = [];
+	for (const item of input) {
+		if (!isObjectRecord(item)) return undefined;
+		out.push(item as MetadataPreset);
 	}
+	return out;
+}
 
-	function coerceFontDefinitions(input: unknown): Array<FontDefinition> | undefined {
-		if (!Array.isArray(input)) return undefined;
-		const out: Array<FontDefinition> = [];
-		for (const item of input) {
-			if (!isObjectRecord(item) || typeof item.id !== 'string') return undefined;
-			out.push(item as FontDefinition);
-		}
-		return out;
+function coerceMetricsPresets(input: unknown): Array<MetricsPreset> | undefined {
+	if (!Array.isArray(input)) return undefined;
+	const out: Array<MetricsPreset> = [];
+	for (const item of input) {
+		if (!isObjectRecord(item)) return undefined;
+		out.push(item as MetricsPreset);
 	}
+	return out;
+}
+
+function coerceFontDefinitions(input: unknown): Array<FontDefinition> | undefined {
+	if (!Array.isArray(input)) return undefined;
+	const out: Array<FontDefinition> = [];
+	for (const item of input) {
+		if (!isObjectRecord(item) || typeof item.id !== 'string') return undefined;
+		out.push(item as FontDefinition);
+	}
+	return out;
 }
 
 function coerceGlyph(input: unknown): GlyphInput | null {
