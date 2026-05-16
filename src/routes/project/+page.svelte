@@ -520,64 +520,17 @@
 			</div>
 		</div>
 
-		<!-- Quick Start Wizard -->
-		<div class="space-y-3 rounded border border-blue-200 bg-blue-50 p-4">
-			<p class="font-mono text-sm font-semibold text-blue-800">Guida rapida</p>
-			<p class="font-mono text-xs text-blue-600">
-				Per creare un font servono: glifi, una sintassi, metriche e metadata.
-			</p>
-			<div class="flex flex-wrap gap-2">
-				<a
-					href="{base}/glyphs"
-					class="rounded px-3 py-1.5 font-mono text-xs no-underline {$glyphs.length > 0
-						? 'bg-green-200 text-green-800'
-						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
-				>
-					{$glyphs.length > 0 ? '✅' : '1.'} Glifi ({$glyphs.length})
-				</a>
-				<a
-					href="{base}/syntax"
-					class="rounded px-3 py-1.5 font-mono text-xs no-underline {$syntaxes.length > 0
-						? 'bg-green-200 text-green-800'
-						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
-				>
-					{$syntaxes.length > 0 ? '✅' : '2.'} Sintassi ({$syntaxes.length})
-				</a>
-				<a
-					href="{base}/metrics"
-					class="rounded px-3 py-1.5 font-mono text-xs no-underline {$metricsPresets.length > 0
-						? 'bg-green-200 text-green-800'
-						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
-				>
-					{$metricsPresets.length > 0 ? '✅' : '3.'} Metriche ({$metricsPresets.length})
-				</a>
-				<button
-					on:click={openMetadataEditor}
-					class="rounded px-3 py-1.5 font-mono text-xs {$metadataPresets.length > 0
-						? 'bg-green-200 text-green-800'
-						: 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}"
-				>
-					{$metadataPresets.length > 0 ? '✅' : '4.'} Metadata ({$metadataPresets.length})
-				</button>
-				<button
-					on:click={openNewFont}
-					class="rounded bg-blue-600 px-3 py-1.5 font-mono text-xs text-white hover:bg-blue-700"
-				>
-					+ Crea font
-				</button>
-			</div>
-		</div>
-
 		<!-- Font Definitions -->
 		<div class="space-y-3">
 			<div class="flex items-center gap-4">
 				<p class="font-mono text-lg">Font</p>
-				<Button on:click={openNewFont}>+ Nuovo font</Button>
+				<Button on:click={() => (onboardingOpen = true)}>+ Nuovo font</Button>
 			</div>
 
 			{#if $fontDefinitions.length === 0}
 				<p class="font-mono text-sm text-slate-500">
-					Nessun font definito. Crea un font cliccando &quot;+ Crea font&quot; nella guida sopra.
+					Nessun font definito. Clicca &quot;+ Nuovo font&quot; per creare il primo font con il
+					wizard guidato.
 				</p>
 			{:else}
 				<div class="overflow-x-auto">
