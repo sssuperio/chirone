@@ -11,9 +11,9 @@ import {
 	metadataPresets,
 	fontMetadata
 } from '$lib/stores';
-import type { FontMetrics } from '$lib/GTL/metrics';
+import type { FontMetadata, FontMetrics } from '$lib/GTL/metrics';
 import { normalizeFontMetrics } from '$lib/GTL/metrics';
-import type { GlyphInput, Syntax } from '$lib/types';
+import type { FontDefinition, GlyphInput, MetadataPreset, MetricsPreset, Syntax } from '$lib/types';
 
 declare global {
 	interface Window {
@@ -297,6 +297,41 @@ function coerceMetrics(input: unknown): FontMetrics | null {
 	} catch {
 		return null;
 	}
+
+	function coerceFontMetadata(input: unknown): FontMetadata | null {
+		if (!isObjectRecord(input)) return null;
+		return input as FontMetadata;
+	}
+
+	function coerceMetadataPresets(input: unknown): Array<MetadataPreset> | undefined {
+		if (!Array.isArray(input)) return undefined;
+		const out: Array<MetadataPreset> = [];
+		for (const item of input) {
+			if (!isObjectRecord(item)) return undefined;
+			out.push(item as MetadataPreset);
+		}
+		return out;
+	}
+
+	function coerceMetricsPresets(input: unknown): Array<MetricsPreset> | undefined {
+		if (!Array.isArray(input)) return undefined;
+		const out: Array<MetricsPreset> = [];
+		for (const item of input) {
+			if (!isObjectRecord(item)) return undefined;
+			out.push(item as MetricsPreset);
+		}
+		return out;
+	}
+
+	function coerceFontDefinitions(input: unknown): Array<FontDefinition> | undefined {
+		if (!Array.isArray(input)) return undefined;
+		const out: Array<FontDefinition> = [];
+		for (const item of input) {
+			if (!isObjectRecord(item) || typeof item.id !== 'string') return undefined;
+			out.push(item as FontDefinition);
+		}
+		return out;
+	}
 }
 
 function coerceGlyph(input: unknown): GlyphInput | null {
@@ -338,10 +373,19 @@ function coerceSnapshot(input: unknown): FontProjectSnapshot | null {
 		parsedSyntaxes.push(syntax);
 	}
 
+	const metadata = coerceFontMetadata(input.metadata);
+	const parsedMetadataPresets = coerceMetadataPresets(input.metadataPresets);
+	const parsedMetricsPresets = coerceMetricsPresets(input.metricsPresets);
+	const parsedFonts = coerceFontDefinitions(input.fonts);
+
 	return {
 		glyphs: parsedGlyphs,
 		syntaxes: parsedSyntaxes,
-		metrics: metricMap
+		metrics: metricMap,
+		metadata: metadata ?? undefined,
+		metadataPresets: parsedMetadataPresets,
+		metricsPresets: parsedMetricsPresets,
+		fonts: parsedFonts
 	};
 }
 
@@ -663,6 +707,15 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		glyphs.set(snapshot.glyphs);
 		syntaxes.set(snapshot.syntaxes);
 		metrics.set(snapshot.metrics);
+		if (snapshot.metadata) fontMetadata.set(snapshot.metadata);
+		if (snapshot.metadataPresets) metadataPresets.set(snapshot.metadataPresets);
+		if (snapshot.metricsPresets) metricsPresets.set(snapshot.metricsPresets);
+		if (snapshot.fonts) {
+			fontDefinitions.set(snapshot.fonts);
+			if (!get(activeFontId) && snapshot.fonts.length > 0) {
+				activeFontId.set(snapshot.fonts[0].id);
+			}
+		}
 		ensureSelectedGlyph(snapshot.glyphs);
 		isApplyingRemote = false;
 
