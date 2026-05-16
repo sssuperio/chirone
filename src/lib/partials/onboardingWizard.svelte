@@ -72,7 +72,7 @@
 			}
 		];
 
-		const triSymbols: Record<string, string> = { NE: '^', NW: '<', SE: '>', SW: 'v' };
+		const triSymbols: Record<string, string> = { NE: '^', NW: '\\', SE: '/', SW: 'v' };
 		const triLabels: Record<string, string> = {
 			NE: 'Triangolo ↗',
 			NW: 'Triangolo ↖',
@@ -89,7 +89,7 @@
 			});
 		}
 
-		const qtrSymbols: Record<string, string> = { NE: '1', NW: '2', SE: '3', SW: '4' };
+		const qtrSymbols: Record<string, string> = { NE: '┐', NW: '┌', SE: '┘', SW: '└' };
 		const qtrLabels: Record<string, string> = {
 			NE: 'Quarto ↗',
 			NW: 'Quarto ↖',
