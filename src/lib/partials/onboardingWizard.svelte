@@ -242,19 +242,15 @@
 		const seen = new Set<string>();
 		const newGlyphs: Array<{ id: string; name: string; structure: string; set?: string }> = [];
 		for (const line of suggestedGlyphs.split('\n')) {
-			for (const name of line
-				.trim()
-				.split('')
-				.filter((c) => c.trim())) {
-				if (seen.has(name)) continue;
-				seen.add(name);
-				const rule = syntax.rules.find((r) => r.symbol === name);
-				newGlyphs.push({
-					id: nanoid(5),
-					name,
-					structure: rule && rule.shape.kind !== ShapeKind.Void ? name : ' '
-				});
-			}
+			const name = line.trim();
+			if (!name || seen.has(name)) continue;
+			seen.add(name);
+			const rule = syntax.rules.find((r) => r.symbol === name);
+			newGlyphs.push({
+				id: nanoid(5),
+				name,
+				structure: rule && rule.shape.kind !== ShapeKind.Void ? name : ' '
+			});
 		}
 		glyphs.set(newGlyphs);
 		saveGlyphsForFont(font.id, newGlyphs);
@@ -349,7 +345,7 @@
 						Ogni forma viene assegnata a un simbolo. Puoi cambiarli dopo.
 					</p>
 					<div class="grid grid-cols-2 gap-2">
-						{#each shapeChoices as sc (sc.kind)}
+						{#each shapeChoices as sc (sc.label)}
 							{@const lblClass = sc.enabled
 								? 'flex items-center gap-2 rounded border p-2 cursor-pointer border-blue-400 bg-blue-50'
 								: 'flex items-center gap-2 rounded border p-2 cursor-pointer border-slate-200'}
