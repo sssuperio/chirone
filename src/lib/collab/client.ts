@@ -1263,6 +1263,19 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		try {
 			const response = await fetch(projectURL, { cache: 'no-store' });
 			if (response.status === 404) {
+				// Project deleted on server — clear client state
+				glyphs.set([]);
+				syntaxes.set([]);
+				if (typeof window !== 'undefined') {
+					try {
+						const keys = Object.keys(window.localStorage).filter((k) =>
+							k.startsWith('chirone-glyphs-')
+						);
+						for (const key of keys) window.localStorage.removeItem(key);
+					} catch {
+						/* ignore */
+					}
+				}
 				loadedRemote = false;
 			} else if (!response.ok) {
 				throw new Error(`load failed: ${response.status}`);
