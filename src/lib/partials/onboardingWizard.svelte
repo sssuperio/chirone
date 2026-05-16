@@ -141,12 +141,26 @@
 	let capHeight = 4;
 	let xHeight = 3;
 
-	let selectedGlyphSets: Record<string, boolean> = {};
 	let glyphSetDefs = getGeneratableGlyphSetDefinitions();
+	let selectedGlyphSetIds = new Set<string>();
+	let selectedGlyphSetsVersion = 0;
 
-	$: selectedGlyphNames = glyphSetDefs
-		.filter((d) => selectedGlyphSets[d.id])
-		.flatMap((d) => getGlyphNamesForSet(d.id));
+	function toggleGlyphSet(id: string) {
+		if (selectedGlyphSetIds.has(id)) {
+			selectedGlyphSetIds.delete(id);
+		} else {
+			selectedGlyphSetIds.add(id);
+		}
+		selectedGlyphSetIds = selectedGlyphSetIds; // trigger reactivity
+		selectedGlyphSetsVersion++;
+	}
+
+	$: selectedGlyphNames = (() => {
+		void selectedGlyphSetsVersion; // reactivity anchor
+		return glyphSetDefs
+			.filter((d) => selectedGlyphSetIds.has(d.id))
+			.flatMap((d) => getGlyphNamesForSet(d.id));
+	})();
 
 	$: suggestedGlyphs = selectedGlyphNames.join('\n');
 
@@ -415,7 +429,7 @@
 					<p class="text-xs text-slate-500">Scegli i set di glifi da includere:</p>
 					<div class="grid grid-cols-2 gap-2">
 						{#each glyphSetDefs as def (def.id)}
-							{@const checked = selectedGlyphSets[def.id] === true}
+							{@const checked = selectedGlyphSetIds.has(def.id)}
 							{@const names = checked ? getGlyphNamesForSet(def.id) : []}
 							<label
 								class="cursor-pointer rounded border p-2 {checked
@@ -423,7 +437,11 @@
 									: 'border-slate-200 hover:bg-slate-50'}"
 							>
 								<div class="flex items-center gap-2">
-									<input type="checkbox" bind:checked={selectedGlyphSets[def.id]} />
+									<input
+										type="checkbox"
+										checked={selectedGlyphSetIds.has(def.id)}
+										on:change={() => toggleGlyphSet(def.id)}
+									/>
 									<span class="text-sm font-semibold">{def.label}</span>
 									<span class="text-xs text-slate-400">({names.length} glifi)</span>
 								</div>
