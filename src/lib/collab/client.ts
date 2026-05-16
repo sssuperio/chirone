@@ -1,6 +1,16 @@
 import { get, writable } from 'svelte/store';
 import { env } from '$env/dynamic/public';
-import { glyphs, metrics, selectedGlyph, syntaxes, activeFontId } from '$lib/stores';
+import {
+	glyphs,
+	metrics,
+	selectedGlyph,
+	syntaxes,
+	activeFontId,
+	fontDefinitions,
+	metricsPresets,
+	metadataPresets,
+	fontMetadata
+} from '$lib/stores';
 import type { FontMetrics } from '$lib/GTL/metrics';
 import { normalizeFontMetrics } from '$lib/GTL/metrics';
 import type { GlyphInput, Syntax } from '$lib/types';
@@ -846,6 +856,41 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		schedulePush(0);
 	};
 
+	const pushFullSnapshot = async () => {
+		if (stopped || !localSyncReady) return;
+		try {
+			const body = JSON.stringify({
+				clientId: clientID,
+				baseVersion: lastVersion,
+				glyphs: JSON.parse(JSON.stringify(get(glyphs))),
+				syntaxes: JSON.parse(JSON.stringify(get(syntaxes))),
+				metrics: JSON.parse(JSON.stringify(get(metrics))),
+				metadata: JSON.parse(JSON.stringify(get(fontMetadata))),
+				metricsPresets: JSON.parse(JSON.stringify(get(metricsPresets))),
+				metadataPresets: JSON.parse(JSON.stringify(get(metadataPresets))),
+				fonts: JSON.parse(JSON.stringify(get(fontDefinitions)))
+			});
+			const response = await fetch(projectURL, {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Chirone-Password': getStoredPassword(projectID)
+				},
+				body
+			});
+			if (response.status === 409) {
+				void reloadProjectSnapshot('full push conflict');
+				return;
+			}
+			if (!response.ok) return;
+			const payload = (await response.json()) as unknown;
+			const doc = coerceProjectResponse(payload);
+			if (doc) lastVersion = Math.max(lastVersion, doc.version);
+		} catch {
+			// ignore push errors
+		}
+	};
+
 	type PendingOperation =
 		| { type: 'glyph_delete'; id: string }
 		| { type: 'glyph_upsert'; id: string; glyph: GlyphInput }
@@ -1300,6 +1345,19 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		unsubs.push(glyphs.subscribe(syncLocalGlyphQueue));
 		unsubs.push(syntaxes.subscribe(syncLocalSyntaxQueue));
 		unsubs.push(metrics.subscribe(syncLocalMetricsQueue));
+
+		// Push full snapshot when fonts or presets change (debounced)
+		let fullPushTimer: ReturnType<typeof setTimeout> | undefined;
+		const debouncedFullPush = () => {
+			if (fullPushTimer) clearTimeout(fullPushTimer);
+			fullPushTimer = setTimeout(() => {
+				void pushFullSnapshot();
+			}, 300);
+		};
+		unsubs.push(fontDefinitions.subscribe(debouncedFullPush));
+		unsubs.push(metricsPresets.subscribe(debouncedFullPush));
+		unsubs.push(metadataPresets.subscribe(debouncedFullPush));
+
 		localSyncReady = true;
 
 		if (!loadedRemote) {
