@@ -17,6 +17,7 @@
 		saveGlyphsForFont,
 		syncMetadataPreset
 	} from '$lib/stores';
+	import { defaultFontMetadata } from '$lib/GTL/metadata';
 	import {
 		createProjectArchive,
 		parseProjectArchive,
@@ -90,11 +91,11 @@
 			name: id,
 			updatedAt: new Date().toISOString()
 		});
-		// Update metadata family name to match project
-		const currentMeta = $fontMetadata;
-		if (!currentMeta.familyName || currentMeta.familyName === 'GTL') {
-			fontMetadata.set({ ...currentMeta, familyName: id });
-		}
+		// Reset metadata and fonts to defaults while the server snapshot
+		// loads. Do NOT merge old project data — bootstrap will apply the
+		// correct server state atomically via applyRemoteSnapshot.
+		fontMetadata.set(defaultFontMetadata);
+		fontDefinitions.set([]);
 	}
 
 	async function createServerProject() {
