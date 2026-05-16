@@ -3,6 +3,7 @@
 	import { nanoid } from 'nanoid';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
+	import { syncProjectNow } from '$lib/collab/client';
 	import { Modal } from 'flowbite-svelte';
 	import Button from '$lib/ui/button.svelte';
 	import RuleShapePreview from '$lib/components/glyph/ruleShapePreview.svelte';
@@ -201,7 +202,7 @@
 		if (step > 0) step--;
 	}
 
-	function finish() {
+	async function finish() {
 		resetProjectState();
 		const rules: Rule[] = [];
 		for (const sc of shapeChoices) {
@@ -257,10 +258,11 @@
 		glyphs.set(newGlyphs);
 		saveGlyphsForFont(font.id, newGlyphs);
 		open = false;
-		// Wait for collab full-snapshot push (debouncedFullPush at 300ms + PUT roundtrip)
-		// before navigating — otherwise the SSE stream may trigger a version-gap
-		// reload that fetches partial server state and wipes the just-created data.
-		setTimeout(() => goto(`${base}/glyphs`), 600);
+		// Push full snapshot to collab server and await acknowledgement before
+		// navigating — otherwise the SSE stream may trigger a version-gap reload
+		// that fetches partial server state and wipes the just-created data.
+		await syncProjectNow();
+		goto(`${base}/glyphs`);
 	}
 </script>
 

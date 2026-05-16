@@ -110,6 +110,7 @@ const legacyCollabProjectStorageKey = 'chirone-collab-project';
 let activeCollabServer = loadCollabServer(collabServerDefault);
 let activeCollabProject = loadCollabProject(collabProjectDefault);
 let runtimeStop: (() => void) | null = null;
+let activeSyncFullSnapshot: (() => Promise<void>) | null = null;
 
 const initialStatus = buildInitialStatus(activeCollabProject);
 
@@ -118,6 +119,11 @@ export const collabConfig = writable<CollabConfig>(currentCollabConfig());
 export const appVersion = writable<string>('loading');
 export const collabServerSHA = writable<string>(currentCollabConfig().enabled ? 'loading' : 'n/a');
 export const canOverrideCollabServer = collabServerOverrideAllowed;
+
+export function syncProjectNow(): Promise<void> {
+	if (activeSyncFullSnapshot) return activeSyncFullSnapshot();
+	return Promise.resolve();
+}
 
 let singletonStop: (() => void) | null = null;
 
@@ -939,6 +945,12 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 	};
 
+	// Exposed via syncProjectNow() so callers can deterministically
+	// push a full snapshot and await server acknowledgement.
+	activeSyncFullSnapshot = async () => {
+		await pushFullSnapshot();
+	};
+
 	type PendingOperation =
 		| { type: 'glyph_delete'; id: string }
 		| { type: 'glyph_upsert'; id: string; glyph: GlyphInput }
@@ -1424,6 +1436,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 	return () => {
 		stopped = true;
 		localSyncReady = false;
+			activeSyncFullSnapshot = null;
 		for (const unsub of unsubs) {
 			unsub();
 		}
