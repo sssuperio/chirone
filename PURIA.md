@@ -310,6 +310,40 @@ tasks:
 
 ## Design Source
 
+All Puria design MUST be neubrutalist.
+
+If a task includes any web UI:
+
+→ follow `https://neubrutalism.com` as the design reference
+
+If a task includes TUI design:
+
+→ apply neubrutalist principles to the terminal interface
+
+Required neubrutalist traits:
+
+- thick, explicit borders
+- hard offset shadows where the medium supports them
+- square or near-square corners
+- flat high-contrast color
+- bold typography
+- visible structure
+- clear hierarchy
+- no gradients
+- no soft, blurred, polished-neutral styling
+
+If the project uses Svelte:
+
+→ prefer existing neobrutalist Svelte components when they fit the task
+
+If existing components do not fit:
+
+→ implement custom components that follow the same neubrutalist design rules
+
+`DESIGN.md` defines the mandatory Puria neubrutalist design system.
+
+Agents MUST read `DESIGN.md` before any task that affects web UI, TUI, visual identity, layout, components, typography, colors, or design-bearing documentation.
+
 If `DESIGN.md` is present:
 
 → it is the source of truth for design
