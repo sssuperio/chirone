@@ -24,7 +24,7 @@
 		activeFontId,
 		projectInfo,
 		saveGlyphsForFont,
-		resetProjectState
+		clearStalePerFontGlyphs
 	} from '$lib/stores';
 
 	export let open = false;
@@ -203,7 +203,7 @@
 	}
 
 	async function finish() {
-		resetProjectState();
+		clearStalePerFontGlyphs();
 		const rules: Rule[] = [];
 		for (const sc of shapeChoices) {
 			if (sc.enabled) rules.push({ ...sc.rule });
@@ -234,7 +234,7 @@
 			enabled: true
 		};
 
-		syntaxes.set([...$syntaxes, syntax]);
+		syntaxes.set([syntax]);
 		metricsPresets.set([mp]);
 		metrics.set(mp);
 		metadataPresets.set([meta]);

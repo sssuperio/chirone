@@ -17,7 +17,6 @@
 		saveGlyphsForFont,
 		syncMetadataPreset
 	} from '$lib/stores';
-	import { defaultFontMetadata } from '$lib/GTL/metadata';
 	import {
 		createProjectArchive,
 		parseProjectArchive,
@@ -91,11 +90,9 @@
 			name: id,
 			updatedAt: new Date().toISOString()
 		});
-		// Reset metadata and fonts to defaults while the server snapshot
-		// loads. Do NOT merge old project data — bootstrap will apply the
-		// correct server state atomically via applyRemoteSnapshot.
-		fontMetadata.set(defaultFontMetadata);
-		fontDefinitions.set([]);
+		// Bootstrap will apply the correct server state atomically via
+		// applyRemoteSnapshot. Do not push defaults here — that would
+		// overwrite server data before bootstrap loads it.
 	}
 
 	async function createServerProject() {
