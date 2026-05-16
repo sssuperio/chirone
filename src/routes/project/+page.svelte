@@ -36,6 +36,9 @@
 	import { Modal } from 'flowbite-svelte';
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
+	import OnboardingWizard from '$lib/partials/onboardingWizard.svelte';
+
+	let onboardingOpen = false;
 
 	const collabServerPattern = /^(|\/|https?:\/\/.+)$/;
 	let collabServerInput = $collabConfig.server;
@@ -753,6 +756,8 @@
 		</div>
 	</div>
 </div>
+
+<OnboardingWizard bind:open={onboardingOpen} />
 
 <!-- Font Form Modal -->
 <Modal
