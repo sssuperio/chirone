@@ -885,7 +885,22 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 			if (!response.ok) return;
 			const payload = (await response.json()) as unknown;
 			const doc = coerceProjectResponse(payload);
-			if (doc) lastVersion = Math.max(lastVersion, doc.version);
+			if (doc) {
+				lastVersion = Math.max(lastVersion, doc.version);
+				if (doc.glyphVersions) {
+					for (const [id, v] of Object.entries(doc.glyphVersions)) {
+						glyphVersions.set(id, Math.max(glyphVersions.get(id) ?? 0, v));
+					}
+				}
+				if (doc.syntaxVersions) {
+					for (const [id, v] of Object.entries(doc.syntaxVersions)) {
+						syntaxVersions.set(id, Math.max(syntaxVersions.get(id) ?? 0, v));
+					}
+				}
+				if (doc.metricsVersion) {
+					metricsVersion = Math.max(metricsVersion, doc.metricsVersion);
+				}
+			}
 		} catch {
 			// ignore push errors
 		}
