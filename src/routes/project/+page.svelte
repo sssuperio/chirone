@@ -130,6 +130,7 @@
 				updatedAt: new Date().toISOString()
 			});
 			loadServerProjects();
+			onboardingOpen = true;
 		} catch (e) {
 			projectsError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -139,6 +140,14 @@
 
 	onMount(() => {
 		if ($collabConfig.enabled) loadServerProjects();
+		// Auto-open wizard for empty projects
+		const projectKey = $collabConfig.enabled ? $collabStatus.project : $projectInfo.name;
+		const flagKey = `onboarding-shown-${projectKey}`;
+		const hasData = $fontDefinitions.length > 0 || $syntaxes.length > 0 || $glyphs.length > 0;
+		if (!hasData && !localStorage.getItem(flagKey)) {
+			onboardingOpen = true;
+			localStorage.setItem(flagKey, '1');
+		}
 	});
 
 	let editingFont: FontDefinition | null = null;
