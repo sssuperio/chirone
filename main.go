@@ -132,6 +132,24 @@ type updateMetricsRequest struct {
 	Metrics     json.RawMessage `json:"metrics"`
 }
 
+type updateMetadataRequest struct {
+	ClientID    string          `json:"clientId"`
+	BaseVersion *int64          `json:"baseVersion,omitempty"`
+	Metadata    json.RawMessage `json:"metadata"`
+}
+
+type updateFontRequest struct {
+	ClientID    string          `json:"clientId"`
+	BaseVersion *int64          `json:"baseVersion,omitempty"`
+	Font        json.RawMessage `json:"font"`
+}
+
+type deleteFontRequest struct {
+	ClientID    string `json:"clientId"`
+	BaseVersion *int64 `json:"baseVersion,omitempty"`
+	ID          string `json:"id"`
+}
+
 type versionConflictError struct {
 	ExpectedVersion int64
 	Current         projectDocument
@@ -295,6 +313,7 @@ type projectState struct {
 	GlyphVersions          map[string]int64
 	SyntaxVersions         map[string]int64
 	MetricsVersion         int64
+	MetadataVersion        int64
 	MetricsPresetsVersion  map[string]int64
 	MetadataPresetsVersion map[string]int64
 	FontsVersion           map[string]int64
@@ -390,6 +409,19 @@ func normalizeSnapshot(snapshot projectSnapshot) (projectSnapshot, error) {
 
 type entityID struct {
 	ID string `json:"id"`
+}
+
+func jsonField(raw json.RawMessage, key string) (string, bool) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return "", false
+	}
+	v, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
 }
 
 func normalizedRawObject(raw json.RawMessage, errPrefix string) (json.RawMessage, error) {
@@ -1935,6 +1967,280 @@ func (h *hub) deleteGlyph(projectID string, req deleteGlyphRequest) (entityUpdat
 	return response, nil
 }
 
+func (h *hub) updateMetadata(projectID string, req updateMetadataRequest) (entityUpdateResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+	metadataRaw, err := normalizedRawObject(req.Metadata, "metadata")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	var (
+		response    entityUpdateResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+
+	if req.BaseVersion == nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("missing baseVersion")
+	}
+
+	currentVersion := state.MetadataVersion
+	if *req.BaseVersion != currentVersion {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, &entityConflictError{
+			ExpectedVersion: *req.BaseVersion,
+			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
+			Entity:          "metadata",
+			EntityID:        "",
+			EntityDeleted:   false,
+			UpdatedAt:       state.Doc.UpdatedAt,
+			Payload:         cloneRawMessage(state.Metadata),
+		}
+	}
+
+	nextVersion := currentVersion
+	if string(state.Metadata) != string(metadataRaw) {
+		if nextVersion < 1 {
+			nextVersion = 1
+		} else {
+			nextVersion++
+		}
+		state.Metadata = metadataRaw
+		state.MetadataVersion = nextVersion
+		if err := applyProjectMutation(state, projectID); err != nil {
+			h.mu.Unlock()
+			return entityUpdateResponse{}, err
+		}
+		persistCopy = cloneProjectStateForPersist(state)
+		channels = collectSubscriberChannels(state)
+		event = &projectEvent{
+			Type:            "metadata_update",
+			ClientID:        req.ClientID,
+			Entity:          "metadata",
+			EntityVersion:   nextVersion,
+			Payload:         cloneRawMessage(metadataRaw),
+			projectDocument: state.Doc,
+		}
+	}
+
+	response = entityUpdateResponse{
+		Project:        projectID,
+		Entity:         "metadata",
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(state.Metadata),
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return entityUpdateResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
+func (h *hub) updateFont(projectID string, req updateFontRequest) (entityUpdateResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+	fontRaw, err := normalizedRawObject(req.Font, "font")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	var fontID string
+	if id, ok := jsonField(fontRaw, "id"); ok {
+		fontID = id
+	} else {
+		return entityUpdateResponse{}, errors.New("font must have an id field")
+	}
+
+	var (
+		response    entityUpdateResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+
+	if req.BaseVersion == nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("missing baseVersion")
+	}
+
+	currentVersion := state.FontsVersion[fontID]
+	if *req.BaseVersion != currentVersion {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, &entityConflictError{
+			ExpectedVersion: *req.BaseVersion,
+			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
+			Entity:          "font",
+			EntityID:        fontID,
+			EntityDeleted:   false,
+			UpdatedAt:       state.Doc.UpdatedAt,
+			Payload:         state.Fonts[fontID],
+		}
+	}
+
+	nextVersion := currentVersion
+	existing, exists := state.Fonts[fontID]
+	if !exists || string(existing) != string(fontRaw) {
+		if nextVersion < 1 {
+			nextVersion = 1
+		} else {
+			nextVersion++
+		}
+		state.Fonts[fontID] = fontRaw
+		state.FontsVersion[fontID] = nextVersion
+		if err := applyProjectMutation(state, projectID); err != nil {
+			h.mu.Unlock()
+			return entityUpdateResponse{}, err
+		}
+		persistCopy = cloneProjectStateForPersist(state)
+		channels = collectSubscriberChannels(state)
+		event = &projectEvent{
+			Type:            "font_upsert",
+			ClientID:        req.ClientID,
+			Entity:          "font",
+			EntityID:        fontID,
+			EntityVersion:   nextVersion,
+			Payload:         cloneRawMessage(fontRaw),
+			projectDocument: state.Doc,
+		}
+	}
+
+	response = entityUpdateResponse{
+		Project:        projectID,
+		Entity:         "font",
+		EntityID:       fontID,
+		Version:        nextVersion,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+		Payload:        cloneRawMessage(state.Fonts[fontID]),
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return entityUpdateResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
+func (h *hub) deleteFont(projectID string, req deleteFontRequest) (entityUpdateResponse, error) {
+	projectID = sanitizeProjectID(projectID)
+
+	if req.ID == "" {
+		return entityUpdateResponse{}, errors.New("missing font id")
+	}
+
+	var (
+		response    entityUpdateResponse
+		persistCopy *projectState
+		channels    []chan projectEvent
+		event       *projectEvent
+	)
+
+	h.mu.Lock()
+	state, err := h.getOrCreateProjectStateLocked(projectID)
+	if err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+
+	fontRaw, exists := state.Fonts[req.ID]
+	if !exists {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("font not found")
+	}
+
+	if req.BaseVersion == nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, errors.New("missing baseVersion")
+	}
+
+	currentVersion := state.FontsVersion[req.ID]
+	if *req.BaseVersion != currentVersion {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, &entityConflictError{
+			ExpectedVersion: *req.BaseVersion,
+			CurrentVersion:  currentVersion,
+			ProjectVersion:  state.Doc.Version,
+			Entity:          "font",
+			EntityID:        req.ID,
+			EntityDeleted:   false,
+			UpdatedAt:       state.Doc.UpdatedAt,
+			Payload:         fontRaw,
+		}
+	}
+
+	delete(state.Fonts, req.ID)
+	delete(state.FontsVersion, req.ID)
+	if err := applyProjectMutation(state, projectID); err != nil {
+		h.mu.Unlock()
+		return entityUpdateResponse{}, err
+	}
+	persistCopy = cloneProjectStateForPersist(state)
+	channels = collectSubscriberChannels(state)
+	event = &projectEvent{
+		Type:            "font_delete",
+		ClientID:        req.ClientID,
+		Entity:          "font",
+		EntityID:        req.ID,
+		EntityDeleted:   true,
+		EntityVersion:   currentVersion + 1,
+		projectDocument: state.Doc,
+	}
+
+	response = entityUpdateResponse{
+		Project:        projectID,
+		Entity:         "font",
+		EntityID:       req.ID,
+		Deleted:        true,
+		Version:        currentVersion + 1,
+		ProjectVersion: state.Doc.Version,
+		UpdatedAt:      state.Doc.UpdatedAt,
+	}
+	h.mu.Unlock()
+
+	if persistCopy != nil {
+		if err := h.saveProjectStateToDisk(projectID, persistCopy); err != nil {
+			return entityUpdateResponse{}, err
+		}
+	}
+	if event != nil {
+		publishProjectEvent(channels, *event)
+	}
+
+	return response, nil
+}
+
 func (h *hub) updateSyntax(projectID string, req updateSyntaxRequest) (entityUpdateResponse, error) {
 	projectID = sanitizeProjectID(projectID)
 	id, syntaxRaw, err := parseEntityItem(req.Syntax, "syntax")
@@ -3128,6 +3434,117 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
+func (s *server) handleMetadata(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	if !s.checkProjectPassword(r, projectID) {
+		http.Error(w, "invalid password", http.StatusForbidden)
+		return
+	}
+
+	defer func() {
+		_ = r.Body.Close()
+	}()
+	var req updateMetadataRequest
+	if err := decodeRequestBody(w, r, &req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	resp, err := s.hub.updateMetadata(projectID, req)
+	if err != nil {
+		var conflictErr *entityConflictError
+		if errors.As(err, &conflictErr) {
+			writeEntityConflict(w, projectID, conflictErr)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *server) handleFont(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() {
+			_ = r.Body.Close()
+		}()
+		var req updateFontRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.updateFont(projectID, req)
+		if err != nil {
+			var conflictErr *entityConflictError
+			if errors.As(err, &conflictErr) {
+				writeEntityConflict(w, projectID, conflictErr)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	case http.MethodDelete:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() {
+			_ = r.Body.Close()
+		}()
+		var req deleteFontRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.deleteFont(projectID, req)
+		if err != nil {
+			var conflictErr *entityConflictError
+			if errors.As(err, &conflictErr) {
+				writeEntityConflict(w, projectID, conflictErr)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 
 func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
@@ -3362,6 +3779,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/font-glyphs", s.handleFontGlyphList)
 	mux.HandleFunc("/api/syntax", s.handleSyntax)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
+	mux.HandleFunc("/api/metadata", s.handleMetadata)
+	mux.HandleFunc("/api/font", s.handleFont)
 	mux.HandleFunc("/api/events", s.handleEvents)
 
 	if s.uiFS != nil {
