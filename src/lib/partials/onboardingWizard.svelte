@@ -257,7 +257,10 @@
 		glyphs.set(newGlyphs);
 		saveGlyphsForFont(font.id, newGlyphs);
 		open = false;
-		goto(`${base}/glyphs`);
+		// Wait for collab full-snapshot push (debouncedFullPush at 300ms + PUT roundtrip)
+		// before navigating — otherwise the SSE stream may trigger a version-gap
+		// reload that fetches partial server state and wipes the just-created data.
+		setTimeout(() => goto(`${base}/glyphs`), 600);
 	}
 </script>
 

@@ -777,7 +777,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}, delay);
 	};
 
-	const schedulePush = (delay = 200) => {
+	const schedulePush = (delay = 500) => {
 		if (stopped || !localSyncReady || isApplyingRemote) return;
 		if (pushTimer) clearTimeout(pushTimer);
 		pushTimer = setTimeout(() => {
@@ -804,7 +804,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 		knownGlyphHashes = nextHashes;
 		if (!isApplyingRemote) {
-			schedulePush(180);
+			schedulePush(400);
 		}
 	};
 
@@ -826,7 +826,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		}
 		knownSyntaxHashes = nextHashes;
 		if (!isApplyingRemote) {
-			schedulePush(180);
+			schedulePush(400);
 		}
 	};
 
@@ -834,7 +834,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 		const hash = stableStringify(currentMetrics);
 		if (knownMetricsHash !== hash && !isApplyingRemote) {
 			pendingMetrics = cloneMetrics(currentMetrics);
-			schedulePush(180);
+			schedulePush(400);
 		}
 		knownMetricsHash = hash;
 	};
