@@ -1304,7 +1304,8 @@
 											resolvedBody={resolvedGlyphBody}
 											resolvedComponentSources={resolvedGlyphComponentSources}
 											brushes={brushSymbols}
-											minRows={$metrics.height}
+											minRows={activeSyntax?.grid?.rows ?? $metrics.height}
+											minColumns={activeSyntax?.grid?.columns ?? 1}
 											{rulesBySymbol}
 											showGrid={activeGlyphEditorTab === 'visualDesign'}
 											on:change={scheduleTouchGlyphs}
