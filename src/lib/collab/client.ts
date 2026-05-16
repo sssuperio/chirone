@@ -858,6 +858,12 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 
 	const pushFullSnapshot = async () => {
 		if (stopped || !localSyncReady) return;
+		// Clear pending individual pushes — the full snapshot covers everything
+		pendingGlyphUpserts.clear();
+		pendingGlyphDeletes.clear();
+		pendingSyntaxUpserts.clear();
+		pendingSyntaxDeletes.clear();
+		pendingMetrics = null;
 		try {
 			const body = JSON.stringify({
 				clientId: clientID,
@@ -879,7 +885,34 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 				body
 			});
 			if (response.status === 409) {
-				void reloadProjectSnapshot('full push conflict');
+				const ok = await reloadProjectSnapshot('full push conflict');
+				if (ok) {
+					// Retry with updated version from reload
+					const retryBody = JSON.stringify({
+						clientId: clientID,
+						baseVersion: lastVersion,
+						glyphs: JSON.parse(JSON.stringify(get(glyphs))),
+						syntaxes: JSON.parse(JSON.stringify(get(syntaxes))),
+						metrics: JSON.parse(JSON.stringify(get(metrics))),
+						metadata: JSON.parse(JSON.stringify(get(fontMetadata))),
+						metricsPresets: JSON.parse(JSON.stringify(get(metricsPresets))),
+						metadataPresets: JSON.parse(JSON.stringify(get(metadataPresets))),
+						fonts: JSON.parse(JSON.stringify(get(fontDefinitions)))
+					});
+					const retryResp = await fetch(projectURL, {
+						method: 'PUT',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Chirone-Password': getStoredPassword(projectID)
+						},
+						body: retryBody
+					});
+					if (retryResp.ok) {
+						const p = (await retryResp.json()) as unknown;
+						const d = coerceProjectResponse(p);
+						if (d) lastVersion = Math.max(lastVersion, d.version);
+					}
+				}
 				return;
 			}
 			if (!response.ok) return;
