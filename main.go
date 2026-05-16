@@ -103,12 +103,14 @@ type updateProjectRequest struct {
 type updateGlyphRequest struct {
 	ClientID    string          `json:"clientId"`
 	BaseVersion *int64          `json:"baseVersion,omitempty"`
+	FontID      string          `json:"fontId,omitempty"`
 	Glyph       json.RawMessage `json:"glyph"`
 }
 
 type deleteGlyphRequest struct {
 	ClientID    string `json:"clientId"`
 	BaseVersion *int64 `json:"baseVersion,omitempty"`
+	FontID      string `json:"fontId,omitempty"`
 	ID          string `json:"id"`
 }
 
@@ -638,6 +640,14 @@ func (h *hub) projectFontsDir(projectID string) string {
 
 func (h *hub) projectFontsFile(projectID, filename string) string {
 	return filepath.Join(h.projectFontsDir(projectID), filename)
+}
+
+func (h *hub) projectFontGlyphDir(projectID, fontID string) string {
+	return filepath.Join(h.projectDir(projectID), "font-glyphs", fontID)
+}
+
+func (h *hub) projectFontGlyphFile(projectID, fontID, filename string) string {
+	return filepath.Join(h.projectFontGlyphDir(projectID, fontID), filename)
 }
 
 func (h *hub) projectGlyphFile(projectID, filename string) string {
@@ -2815,6 +2825,203 @@ func (s *server) handleGlyph(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Font-scoped glyph storage
+
+func (h *hub) saveFontGlyph(projectID, fontID string, glyphRaw json.RawMessage) (entityUpdateResponse, error) {
+	id, normalized, err := parseEntityItem(glyphRaw, "glyph")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	bytes, err := json.MarshalIndent(json.RawMessage(normalized), "", "  ")
+	if err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	filename := sanitizeEntityFilenameBase(entityNameFromRaw(normalized))
+	if filename == "" {
+		filename = sanitizeEntityFilenameBase(id)
+	}
+	if filename == "" {
+		filename = "unnamed"
+	}
+
+	if err := writeJSONAtomic(h.projectFontGlyphFile(projectID, fontID, filename+".json"), bytes); err != nil {
+		return entityUpdateResponse{}, err
+	}
+
+	return entityUpdateResponse{
+		Project:   projectID,
+		Entity:    "fontGlyph",
+		EntityID:  id,
+		Version:   1,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Payload:   cloneRawMessage(normalized),
+	}, nil
+}
+
+func (h *hub) deleteFontGlyph(projectID, fontID, glyphID string) (entityUpdateResponse, error) {
+	glyphID = strings.TrimSpace(glyphID)
+	if glyphID == "" {
+		return entityUpdateResponse{}, errors.New("missing id")
+	}
+
+	dir := h.projectFontGlyphDir(projectID, fontID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return entityUpdateResponse{Project: projectID, Entity: "fontGlyph", EntityID: glyphID, Deleted: true}, nil
+		}
+		return entityUpdateResponse{}, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if pathpkg.Ext(name) != ".json" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		var parsed entityID
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			continue
+		}
+		if parsed.ID == glyphID {
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+				return entityUpdateResponse{}, err
+			}
+			return entityUpdateResponse{
+				Project:   projectID,
+				Entity:    "fontGlyph",
+				EntityID:  glyphID,
+				Deleted:   true,
+				UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}, nil
+		}
+	}
+
+	return entityUpdateResponse{Project: projectID, Entity: "fontGlyph", EntityID: glyphID, Deleted: true}, nil
+}
+
+func (h *hub) listFontGlyphs(projectID, fontID string) ([]json.RawMessage, error) {
+	dir := h.projectFontGlyphDir(projectID, fontID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []json.RawMessage{}, nil
+		}
+		return nil, err
+	}
+
+	var result []json.RawMessage
+	for _, entry := range entries {
+		if entry.IsDir() || pathpkg.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		result = append(result, json.RawMessage(raw))
+	}
+	return result, nil
+}
+
+func (s *server) handleFontGlyph(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+	fontID := strings.TrimSpace(r.URL.Query().Get("font"))
+	if fontID == "" {
+		http.Error(w, "missing font id", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() { _ = r.Body.Close() }()
+		var req updateGlyphRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.saveFontGlyph(projectID, fontID, req.Glyph)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	case http.MethodDelete:
+		if !s.checkProjectPassword(r, projectID) {
+			http.Error(w, "invalid password", http.StatusForbidden)
+			return
+		}
+		defer func() { _ = r.Body.Close() }()
+		var req deleteGlyphRequest
+		if err := decodeRequestBody(w, r, &req); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		resp, err := s.hub.deleteFontGlyph(projectID, fontID, req.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *server) handleFontGlyphList(w http.ResponseWriter, r *http.Request) {
+	s.writeCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := sanitizeProjectID(r.URL.Query().Get("project"))
+	if projectID == "" {
+		projectID = "default"
+	}
+	fontID := strings.TrimSpace(r.URL.Query().Get("font"))
+	if fontID == "" {
+		http.Error(w, "missing font id", http.StatusBadRequest)
+		return
+	}
+
+	glyphs, err := s.hub.listFontGlyphs(projectID, fontID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(glyphs)
+}
+
 func (s *server) handleSyntax(w http.ResponseWriter, r *http.Request) {
 	s.writeCORS(w, r)
 	if r.Method == http.MethodOptions {
@@ -3151,6 +3358,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/revisions", s.handleRevisions)
 	mux.HandleFunc("/api/revisions/revert", s.handleRevisionRevert)
 	mux.HandleFunc("/api/glyph", s.handleGlyph)
+	mux.HandleFunc("/api/font-glyph", s.handleFontGlyph)
+	mux.HandleFunc("/api/font-glyphs", s.handleFontGlyphList)
 	mux.HandleFunc("/api/syntax", s.handleSyntax)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/events", s.handleEvents)

@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store';
 import { env } from '$env/dynamic/public';
-import { glyphs, metrics, selectedGlyph, syntaxes } from '$lib/stores';
+import { glyphs, metrics, selectedGlyph, syntaxes, activeFontId } from '$lib/stores';
 import type { FontMetrics } from '$lib/GTL/metrics';
 import { normalizeFontMetrics } from '$lib/GTL/metrics';
 import type { GlyphInput, Syntax } from '$lib/types';
@@ -963,6 +963,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 						body: JSON.stringify({
 							clientId: clientID,
 							baseVersion,
+							fontId: get(activeFontId),
 							glyph: op.glyph
 						})
 					});
@@ -976,6 +977,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 						body: JSON.stringify({
 							clientId: clientID,
 							baseVersion,
+							fontId: get(activeFontId),
 							id: op.id
 						})
 					});
@@ -1002,6 +1004,7 @@ function startCollabRuntime(serverBase: string, projectID: string): () => void {
 						body: JSON.stringify({
 							clientId: clientID,
 							baseVersion,
+							fontId: get(activeFontId),
 							id: op.id
 						})
 					});
